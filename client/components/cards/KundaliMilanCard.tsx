@@ -25,23 +25,25 @@ const KOOTA_LABELS: Record<string, string> = {
 };
 
 const VERDICT_TONE: Record<string, string> = {
-  excellent: "bg-emerald-500/25 text-emerald-300 border-emerald-400/60",
-  good: "bg-sky-500/20 text-sky-300 border-sky-400/60",
-  average: "bg-amber-500/20 text-amber-300 border-amber-400/60",
-  low: "bg-rose-500/25 text-rose-300 border-rose-400/60",
+  excellent: "bg-emerald-300/25 text-emerald-700 border-emerald-400/60",
+  good: "bg-sky-300/20 text-sky-700 border-sky-400/60",
+  average: "bg-amber-300/20 text-amber-700 border-amber-400/60",
+  low: "bg-rose-300/25 text-rose-700 border-rose-400/60",
 };
 
 interface Props {
   data: KundaliMilanResult;
+  fullWidth?: boolean;
 }
 
-export default function KundaliMilanCard({ data }: Props) {
+export default function KundaliMilanCard({ data, fullWidth }: Props) {
   return (
     <CardShell
       title="Kundali Milan"
       badge={data.verdict}
       icon={<Heart size={16} />}
       accent="rose"
+      fullWidth={fullWidth}
     >
       <div className="flex items-center gap-4 mb-5">
         <div
@@ -111,7 +113,7 @@ export default function KundaliMilanCard({ data }: Props) {
 
       {data.warnings?.length > 0 && (
         <div className="bg-amber-500/10 wobbly-border-sm px-3 py-2">
-          <div className="font-nav-label text-[9px] uppercase tracking-widest text-amber-300 mb-1">
+          <div className="font-nav-label text-[9px] uppercase tracking-widest text-amber-700 mb-1">
             Warnings
           </div>
           <ul className="space-y-0.5">
@@ -140,10 +142,10 @@ function DoshaCell({
   cancelled: boolean;
 }) {
   const tone = !present
-    ? "bg-emerald-500/10 text-emerald-300"
+    ? "bg-emerald-500/5 text-emerald-700"
     : cancelled
-    ? "bg-sky-500/10 text-sky-300"
-    : "bg-rose-500/15 text-rose-300";
+    ? "bg-sky-500/5 text-sky-700"
+    : "bg-rose-500/15 text-rose-700";
   const label = !present
     ? "no Mangal Dosha"
     : cancelled

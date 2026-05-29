@@ -128,33 +128,48 @@ export default function ProfileDetailPage() {
       )}
 
       {profile.computed_chart && (
-        <div className="grid grid-cols-1 gap-5">
-          {svg && (
-            <div className="flex justify-start">
-              <ChartSvgCard svg={svg} />
+        <div className="space-y-6 w-full">
+          {/* Pair 1: Visualization & Birth Chart */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 w-full">
+            {svg && (
+              <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
+                <ChartSvgCard svg={svg} />
+              </div>
+            )}
+            <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
+              <BirthChartCard data={profile.computed_chart} />
             </div>
-          )}
-          <div className="flex justify-start">
-            <BirthChartCard data={profile.computed_chart} />
           </div>
-          {profile.computed_dashas && (
-            <div className="flex justify-start">
-              <DashaTimelineCard data={profile.computed_dashas} />
+
+          {/* Pair 2: Dasha & Transits */}
+          {(profile.computed_dashas || transits) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 w-full">
+              {profile.computed_dashas && (
+                <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
+                  <DashaTimelineCard data={profile.computed_dashas} />
+                </div>
+              )}
+              {transits && (
+                <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
+                  <DailyTransitsCard data={transits} />
+                </div>
+              )}
             </div>
           )}
-          {nak && (
-            <div className="flex justify-start">
-              <NakshatraCard data={nak} />
-            </div>
-          )}
-          {sade && (
-            <div className="flex justify-start">
-              <SadeSatiCard data={sade} />
-            </div>
-          )}
-          {transits && (
-            <div className="flex justify-start">
-              <DailyTransitsCard data={transits} />
+
+          {/* Pair 3: Sade Sati & Nakshatra */}
+          {(sade || nak) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 w-full">
+              {sade && (
+                <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
+                  <SadeSatiCard data={sade} />
+                </div>
+              )}
+              {nak && (
+                <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
+                  <NakshatraCard data={nak} />
+                </div>
+              )}
             </div>
           )}
         </div>

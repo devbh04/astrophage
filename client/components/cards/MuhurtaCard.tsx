@@ -4,6 +4,7 @@ import type { MuhurtaWindow } from "@/lib/api";
 
 interface Props {
   data: { purpose: string; windows: MuhurtaWindow[] };
+  fullWidth?: boolean;
 }
 
 const fmtDateTime = (iso: string) => {
@@ -22,13 +23,14 @@ const fmtDateTime = (iso: string) => {
   }
 };
 
-export default function MuhurtaCard({ data }: Props) {
+export default function MuhurtaCard({ data, fullWidth }: Props) {
   return (
     <CardShell
       title="Auspicious Muhurta"
       badge={data.purpose}
       icon={<Calendar size={16} />}
       accent="teal"
+      fullWidth={fullWidth}
     >
       {data.windows.length === 0 ? (
         <p className="font-body-md text-sm text-on-surface-variant text-center py-4">
@@ -65,7 +67,7 @@ export default function MuhurtaCard({ data }: Props) {
                     <div className="font-body-md text-xs text-on-surface-variant mb-2">
                       {start.time} – {end.time} · {w.duration_minutes}m
                     </div>
-                    <p className="font-body-md text-[11px] text-on-surface italic line-clamp-2">
+                    <p className="font-body-md text-[11px] text-on-surface italic">
                       {w.summary}
                     </p>
                   </div>
@@ -90,7 +92,7 @@ function Factor({ k, v }: { k: string; v: string }) {
       <div className="font-nav-label text-[8px] uppercase tracking-widest text-on-surface-variant">
         {k}
       </div>
-      <div className="font-body-md text-[10px] text-primary truncate">{v}</div>
+      <div className="font-body-md text-[10px] text-primary break-words">{v}</div>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Eye, GitCompare, Trash2 } from "lucide-react";
+import { Plus, Eye, GitCompare, Trash2, Sun, Moon } from "lucide-react";
 import { profilesApi, type BirthProfile } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import AddProfileDialog from "@/components/family/AddProfileDialog";
@@ -60,18 +60,16 @@ export default function FamilyPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {profiles.length >= 2 && (
-            <button
-              onClick={() => {
-                setCompareSeed(undefined);
-                setCompareOpen(true);
-              }}
-              className="btn-ghost wobbly-border-sm px-4 py-3 font-nav-label text-xs uppercase tracking-widest flex items-center gap-2"
-            >
-              <GitCompare size={14} />
-              COMPARE
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setCompareSeed(undefined);
+              setCompareOpen(true);
+            }}
+            className="btn-ghost wobbly-border-sm px-4 py-3 font-nav-label text-xs uppercase tracking-widest flex items-center gap-2"
+          >
+            <GitCompare size={14} />
+            KUNDALI MILAN
+          </button>
           <button
             onClick={() => setAddOpen(true)}
             className="btn-primary wobbly-border-sm px-6 py-3 font-nav-label text-xs uppercase tracking-widest flex items-center gap-2"
@@ -114,41 +112,41 @@ export default function FamilyPage() {
                 <div className="tape-strip" />
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="font-headline-md text-lg text-primary">
+                    <h3 className="font-headline-md text-2xl text-primary">
                       {profile.name}
                     </h3>
                     {profile.relationship && (
-                      <span className="font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                      <span className="font-nav-label text-xs uppercase tracking-widest text-on-surface-variant mt-1 block">
                         {profile.relationship}
                       </span>
                     )}
                   </div>
                   {profile.computed_chart && (
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="px-2 py-0.5 text-[9px] font-nav-label uppercase tracking-wider bg-surface-container wobbly-border-sm text-solar-gold">
-                        ☉ {sunSign}
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className="px-2.5 py-1 text-[11px] font-nav-label uppercase flex flex-row gap-1.5 items-center tracking-wider bg-surface-container wobbly-border-sm text-amber-600">
+                        <Sun size={12} /> {sunSign}
                       </span>
-                      <span className="px-2 py-0.5 text-[9px] font-nav-label uppercase tracking-wider bg-surface-container wobbly-border-sm text-sky-300">
-                        ☽ {moonSign}
+                      <span className="px-2.5 py-1 text-[11px] font-nav-label uppercase flex flex-row gap-1.5 items-center tracking-wider bg-surface-container wobbly-border-sm text-sky-700">
+                        <Moon size={12} /> {moonSign}
                       </span>
                     </div>
                   )}
                 </div>
 
-                <p className="font-body-md text-sm text-on-surface-variant mb-1">
+                <p className="font-body-md text-base text-on-surface-variant mb-1 mt-2">
                   Born: {profile.birth_date}
                   {profile.birth_time ? ` · ${profile.birth_time}` : ""}
                 </p>
                 {profile.place_name && (
-                  <p className="font-body-md text-xs text-on-surface-variant truncate">
+                  <p className="font-body-md text-sm text-on-surface-variant truncate">
                     📍 {profile.place_name}
                   </p>
                 )}
 
-                <div className="flex flex-wrap gap-2 mt-4">
+                <div className="flex flex-wrap gap-2 mt-6">
                   <Link
                     href={`/family/${profile.id}`}
-                    className="btn-ghost wobbly-border-sm px-3 py-2 font-nav-label text-[10px] uppercase tracking-wider flex items-center gap-1"
+                    className="btn-ghost wobbly-border-sm px-2 py-1.5 font-nav-label text-[11px] uppercase tracking-wider flex items-center gap-1.5"
                   >
                     <Eye size={12} />
                     VIEW
@@ -159,7 +157,7 @@ export default function FamilyPage() {
                         setCompareSeed(profile.id);
                         setCompareOpen(true);
                       }}
-                      className="btn-ghost wobbly-border-sm px-3 py-2 font-nav-label text-[10px] uppercase tracking-wider flex items-center gap-1"
+                      className="btn-ghost wobbly-border-sm px-2 py-1.5 font-nav-label text-[11px] uppercase tracking-wider flex items-center gap-1.5"
                     >
                       <GitCompare size={12} />
                       COMPARE
@@ -167,7 +165,7 @@ export default function FamilyPage() {
                   )}
                   <button
                     onClick={() => handleDelete(profile.id)}
-                    className="btn-ghost wobbly-border-sm px-3 py-2 font-nav-label text-[10px] uppercase tracking-wider flex items-center gap-1 hover:text-rose-400 ml-auto"
+                    className="btn-ghost wobbly-border-sm px-2 py-1.5 font-nav-label text-[11px] uppercase tracking-wider flex items-center gap-1.5 hover:text-rose-400 ml-auto"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -188,6 +186,7 @@ export default function FamilyPage() {
         onOpenChange={setCompareOpen}
         profiles={profiles}
         initialBoyId={compareSeed}
+        onProfileAdded={handleCreated}
       />
     </div>
   );

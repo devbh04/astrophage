@@ -43,7 +43,7 @@ export default function CalendarPage() {
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const fetchPanchang = async (date: string) => {
@@ -104,31 +104,38 @@ export default function CalendarPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h2 className="font-headline-md text-2xl text-primary mb-1">
-            Auspicious{" "}
-            <span className="font-annotation-sm text-3xl text-solar-gold">
-              Calendar
-            </span>
-          </h2>
-          <p className="font-nav-label text-nav-label text-on-surface-variant uppercase tracking-[0.2em] mb-4">
-            {fmtSelected.toUpperCase()} · {coords.place}
-          </p>
-          <div className="max-w-2xl border-l-2 border-solar-gold pl-4 py-1">
-            <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
-              Select any day to view its complete Panchang (Vedic almanac). 
-              Use this to check auspicious timings (Muhurta), daily planetary alignments, 
-              and inauspicious windows to avoid for important activities.
-            </p>
+      <div className="flex flex-col mb-6 gap-4 sm:gap-8">
+        <div className="flex-1">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+            <h2 className="font-headline-md text-2xl text-primary mb-1">
+              Auspicious{" "}
+              <span className="font-annotation-sm text-3xl text-solar-gold">
+                Calendar
+              </span>
+              <p className="font-nav-label text-[10px] text-on-surface-variant uppercase tracking-[0.2em] mt-2 mb-4">
+                {fmtSelected.toUpperCase()} · {coords.place}
+              </p>
+            </h2>
+            <button
+              onClick={() => setMuhurtaOpen(true)}
+              className="btn-primary wobbly-border-sm px-5 py-3 sm:py-2.5 h-min font-nav-label text-xs uppercase tracking-widest sm:mt-2 whitespace-nowrap w-full sm:w-auto"
+            >
+              Find Muhurta
+            </button>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full mt-2 gap-4 sm:gap-0">
+            <div className="border-l-2 border-solar-gold pl-4 py-1">
+              <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
+                Select any day to view its complete <b>Panchang</b>
+              </p>
+            </div>
+            <div className="border-l-2 sm:border-l-0 sm:border-r-2 border-solar-gold pl-4 sm:pl-0 sm:pr-4 py-1 text-left sm:text-right">
+              <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
+                Select your activity and date to find the most auspicious <b>Muhurta</b> (timings).
+              </p>
+            </div>
           </div>
         </div>
-        <button
-          onClick={() => setMuhurtaOpen(true)}
-          className="btn-primary wobbly-border-sm px-5 py-2.5 font-nav-label text-xs uppercase tracking-widest mt-2"
-        >
-          Find Muhurta
-        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] items-start">
@@ -215,10 +222,9 @@ export default function CalendarPage() {
                   key={day}
                   onClick={() => setSelectedDate(dateStr)}
                   className={`aspect-square flex items-center justify-center wobbly-border-sm transition-all text-sm
-                    ${
-                      isSelected
-                        ? "bg-solar-gold/25 border-solar-gold/70 text-solar-gold ring-1 ring-solar-gold/40"
-                        : isToday
+                    ${isSelected
+                      ? "bg-solar-gold/25 border-solar-gold/70 text-solar-gold ring-1 ring-solar-gold/40"
+                      : isToday
                         ? "bg-surface-container border-solar-gold/60 text-solar-gold"
                         : "bg-surface-container-lowest border-outline/20 text-primary hover:bg-surface-container/60"
                     }`}
