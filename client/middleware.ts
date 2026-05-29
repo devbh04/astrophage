@@ -2,16 +2,14 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /**
- * Middleware for authentication redirects.
- *
- * - Protected routes (/(app)/*): redirect to /login if no session cookie
- * - Auth routes (/(auth)/*): redirect to /chat if session cookie exists
+ * Authentication redirects.
+ * - Protected /(app)/* routes redirect to /login if no session cookie
+ * - Auth /(auth)/* routes redirect to /chat if logged in
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get("astrophage_session");
 
-  // Protected app routes — require auth
   const isAppRoute =
     pathname.startsWith("/chat") ||
     pathname.startsWith("/chart") ||
@@ -23,7 +21,6 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Auth routes — redirect to app if already logged in
   const isAuthRoute =
     pathname.startsWith("/login") || pathname.startsWith("/register");
 

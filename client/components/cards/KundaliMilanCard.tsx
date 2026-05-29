@@ -1,0 +1,160 @@
+import { Heart } from "lucide-react";
+import CardShell from "./CardShell";
+import type { KundaliMilanResult } from "@/lib/api";
+
+const KOOTA_MAX: Record<string, number> = {
+  varna: 1,
+  vashya: 2,
+  tara: 3,
+  yoni: 4,
+  graha_maitri: 5,
+  gana: 6,
+  bhakoot: 7,
+  nadi: 8,
+};
+
+const KOOTA_LABELS: Record<string, string> = {
+  varna: "Varna",
+  vashya: "Vashya",
+  tara: "Tara",
+  yoni: "Yoni",
+  graha_maitri: "Graha Maitri",
+  gana: "Gana",
+  bhakoot: "Bhakoot",
+  nadi: "Nadi",
+};
+
+const VERDICT_TONE: Record<string, string> = {
+  excellent: "bg-emerald-500/25 text-emerald-300 border-emerald-400/60",
+  good: "bg-sky-500/20 text-sky-300 border-sky-400/60",
+  average: "bg-amber-500/20 text-amber-300 border-amber-400/60",
+  low: "bg-rose-500/25 text-rose-300 border-rose-400/60",
+};
+
+interface Props {
+  data: KundaliMilanResult;
+}
+
+export default function KundaliMilanCard({ data }: Props) {
+  return (
+    <CardShell
+      title="Kundali Milan"
+      badge={data.verdict}
+      icon={<Heart size={16} />}
+      accent="rose"
+    >
+      <div className="flex items-center gap-4 mb-5">
+        <div
+          className={`w-24 h-24 rounded-full flex flex-col items-center justify-center wobbly-border-sm ${
+            VERDICT_TONE[data.verdict] || ""
+          }`}
+        >
+          <div className="font-headline-md text-2xl">{data.total}</div>
+          <div className="font-nav-label text-[9px] uppercase tracking-widest opacity-70">
+            of 36
+          </div>
+        </div>
+        <div className="flex-1">
+          <div className="font-annotation-sm text-2xl text-solar-gold capitalize">
+            {data.verdict}
+          </div>
+          <p className="font-body-md text-xs text-on-surface-variant mt-1 italic">
+            {data.summary}
+          </p>
+        </div>
+      </div>
+
+      {/* Koota score breakdown */}
+      <div className="space-y-1.5 mb-4">
+        {Object.entries(data.scores).map(([key, val]) => {
+          const max = KOOTA_MAX[key] || 1;
+          const pct = (val / max) * 100;
+          const isFull = val === max;
+          const isZero = val === 0;
+          return (
+            <div key={key} className="flex items-center gap-3">
+              <div className="w-24 font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                {KOOTA_LABELS[key] || key}
+              </div>
+              <div className="flex-1 h-2.5 bg-surface-container-lowest/60 rounded-sm overflow-hidden border border-outline/20">
+                <div
+                  className={`h-full ${
+                    isFull
+                      ? "bg-emerald-500/60"
+                      : isZero
+                      ? "bg-rose-500/40"
+                      : "bg-solar-gold/60"
+                  }`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="w-10 text-right font-headline-md text-sm text-primary">
+                {val}/{max}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <DoshaCell
+          who="Boy"
+          present={data.mangal_dosha.boy.present}
+          cancelled={data.mangal_dosha.boy.cancelled}
+        />
+        <DoshaCell
+          who="Girl"
+          present={data.mangal_dosha.girl.present}
+          cancelled={data.mangal_dosha.girl.cancelled}
+        />
+      </div>
+
+      {data.warnings?.length > 0 && (
+        <div className="bg-amber-500/10 wobbly-border-sm px-3 py-2">
+          <div className="font-nav-label text-[9px] uppercase tracking-widest text-amber-300 mb-1">
+            Warnings
+          </div>
+          <ul className="space-y-0.5">
+            {data.warnings.map((w, i) => (
+              <li
+                key={i}
+                className="font-body-md text-[11px] text-on-surface-variant"
+              >
+                · {w}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function DoshaCell({
+  who,
+  present,
+  cancelled,
+}: {
+  who: string;
+  present: boolean;
+  cancelled: boolean;
+}) {
+  const tone = !present
+    ? "bg-emerald-500/10 text-emerald-300"
+    : cancelled
+    ? "bg-sky-500/10 text-sky-300"
+    : "bg-rose-500/15 text-rose-300";
+  const label = !present
+    ? "no Mangal Dosha"
+    : cancelled
+    ? "Mangal — cancelled"
+    : "Mangal Dosha";
+  return (
+    <div className={`px-3 py-2 wobbly-border-sm ${tone}`}>
+      <div className="font-nav-label text-[9px] uppercase tracking-widest opacity-70">
+        {who}
+      </div>
+      <div className="font-headline-md text-xs mt-0.5">{label}</div>
+    </div>
+  );
+}

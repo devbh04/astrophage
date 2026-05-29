@@ -1,8 +1,12 @@
 /**
  * WebSocket client manager for real-time chat.
  *
- * Handles connection, reconnection, message parsing,
- * and event dispatching.
+ * Connects to /ws/{conversation_id} (or "new" for a fresh conversation),
+ * dispatches typed events to subscribers, and resends a heartbeat.
+ *
+ * Auth: cookies don't reliably ride cross-origin WS handshakes (SameSite=lax
+ * blocks them), so we read the session cookie client-side and forward the
+ * JWT as a `?token=...` query param. The backend accepts either source.
  */
 
 const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:7860";
@@ -14,6 +18,7 @@ export type WsMessageType =
   | "confirmation_required"
   | "chart_svg"
   | "structured_card"
+  | "conversation"
   | "done"
   | "error"
   | "pong";
@@ -27,23 +32,36 @@ export interface WsMessage {
   svg?: string;
   card_type?: string;
   data?: Record<string, unknown>;
+  conversation_id?: string;
   message?: string;
 }
 
 type MessageHandler = (msg: WsMessage) => void;
 
+function readSessionCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  for (const raw of document.cookie.split(";")) {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("astrophage_session=")) {
+      return decodeURIComponent(trimmed.slice("astrophage_session=".length));
+    }
+  }
+  return null;
+}
+
 export class AstroWebSocket {
   private ws: WebSocket | null = null;
-  private sessionId: string;
+  private conversationId: string;
   private handlers: Map<WsMessageType | "any", MessageHandler[]> = new Map();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private _isConnected = false;
+  private _shouldReconnect = true;
 
-  constructor(sessionId: string) {
-    this.sessionId = sessionId;
+  constructor(conversationId: string) {
+    this.conversationId = conversationId;
   }
 
   get isConnected(): boolean {
@@ -52,14 +70,19 @@ export class AstroWebSocket {
 
   connect(): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
+    this._shouldReconnect = true;
 
-    this.ws = new WebSocket(`${WS_BASE}/ws/${this.sessionId}`);
+    const token = readSessionCookie();
+    let url = `${WS_BASE}/ws/${this.conversationId}`;
+    if (token) {
+      url += `?token=${encodeURIComponent(token)}`;
+    }
+
+    this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
       this._isConnected = true;
       this.reconnectAttempts = 0;
-
-      // Start heartbeat
       this.pingInterval = setInterval(() => {
         this.send({ type: "ping" });
       }, 30000);
@@ -68,25 +91,47 @@ export class AstroWebSocket {
     this.ws.onmessage = (event) => {
       try {
         const msg: WsMessage = JSON.parse(event.data);
+        if (msg.type === "conversation" && msg.conversation_id) {
+          this.conversationId = msg.conversation_id;
+        }
         this.dispatch(msg);
       } catch {
         console.error("Failed to parse WebSocket message:", event.data);
       }
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       this._isConnected = false;
       this.clearPing();
-      this.attemptReconnect();
+      const why = describeCloseCode(event.code);
+      if (event.code === 4001) {
+        console.warn(
+          `[ws] auth failed (4001). Cookie present: ${!!token}. ` +
+            `Make sure you're signed in and the backend is running at ${WS_BASE}.`
+        );
+        // Auth failures aren't going to recover by reconnecting.
+        this._shouldReconnect = false;
+      } else {
+        console.warn(
+          `[ws] closed (code=${event.code} ${why}). reason="${event.reason || ""}"`
+        );
+      }
+      if (this._shouldReconnect) this.attemptReconnect();
     };
 
-    this.ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
+    this.ws.onerror = () => {
+      // The browser doesn't expose useful details on WS errors. The
+      // close handler above gets the actual code (4001 = auth failed,
+      // 1006 = network/CORS/no server). Log a hint here.
+      console.warn(
+        `[ws] error connecting to ${url.split("?")[0]}. ` +
+          `Backend reachable? ${WS_BASE}`
+      );
     };
   }
 
   disconnect(): void {
-    this.maxReconnectAttempts = 0; // Prevent reconnection
+    this._shouldReconnect = false;
     this.clearPing();
     this.ws?.close();
     this.ws = null;
@@ -111,8 +156,6 @@ export class AstroWebSocket {
     const existing = this.handlers.get(type) || [];
     existing.push(handler);
     this.handlers.set(type, existing);
-
-    // Return unsubscribe function
     return () => {
       const handlers = this.handlers.get(type) || [];
       this.handlers.set(
@@ -123,11 +166,8 @@ export class AstroWebSocket {
   }
 
   private dispatch(msg: WsMessage): void {
-    // Dispatch to type-specific handlers
     const typeHandlers = this.handlers.get(msg.type) || [];
     typeHandlers.forEach((h) => h(msg));
-
-    // Dispatch to "any" handlers
     const anyHandlers = this.handlers.get("any") || [];
     anyHandlers.forEach((h) => h(msg));
   }
@@ -141,12 +181,25 @@ export class AstroWebSocket {
 
   private attemptReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
-
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    setTimeout(() => this.connect(), delay);
+  }
+}
 
-    setTimeout(() => {
-      this.connect();
-    }, delay);
+function describeCloseCode(code: number): string {
+  switch (code) {
+    case 1000:
+      return "normal";
+    case 1001:
+      return "going-away";
+    case 1006:
+      return "abnormal — server unreachable or CORS";
+    case 1011:
+      return "server error";
+    case 4001:
+      return "auth failed";
+    default:
+      return "unknown";
   }
 }

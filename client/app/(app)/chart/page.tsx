@@ -1,32 +1,130 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  profilesApi,
+  toolsApi,
+  type BirthProfile,
+  type NakshatraResult,
+  type DailyTransits,
+} from "@/lib/api";
+import { useAppStore } from "@/lib/store";
+import BirthChartCard from "@/components/cards/BirthChartCard";
+import DashaTimelineCard from "@/components/cards/DashaTimelineCard";
+import NakshatraCard from "@/components/cards/NakshatraCard";
+import DailyTransitsCard from "@/components/cards/DailyTransitsCard";
+import ChartSvgCard from "@/components/cards/ChartSvgCard";
 
 export default function ChartPage() {
+  const { user } = useAppStore();
+  const [self, setSelf] = useState<BirthProfile | null>(null);
+  const [svg, setSvg] = useState<string>("");
+  const [nak, setNak] = useState<NakshatraResult | null>(null);
+  const [transits, setTransits] = useState<DailyTransits | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    profilesApi
+      .list()
+      .then(async (profiles) => {
+        const me = profiles.find((p) => p.relationship === "self") || null;
+        setSelf(me);
+        if (me?.computed_chart) {
+          const style = user?.chart_format || "south_indian";
+          const [svgRes, nakRes, transitRes] = await Promise.all([
+            toolsApi.chartSvg(me.computed_chart, style),
+            toolsApi.nakshatra(me.computed_chart),
+            toolsApi.dailyTransits({ natal_chart: me.computed_chart }),
+          ]);
+          setSvg(svgRes.svg);
+          setNak(nakRes);
+          setTransits(transitRes);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [user?.chart_format]);
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[60vh]">
+        <div className="w-3 h-3 rounded-full bg-solar-gold animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!self) {
+    return (
+      <div className="p-6 md:p-8 max-w-3xl mx-auto">
+        <div className="glass-panel wobbly-border p-12 text-center">
+          <p className="font-annotation-sm text-2xl text-solar-gold mb-3">
+            No self-profile yet
+          </p>
+          <p className="font-body-md text-sm text-on-surface-variant mb-6">
+            Add a profile with relationship <strong>self</strong> in the Family
+            Vault to populate this view.
+          </p>
+          <Link
+            href="/family"
+            className="btn-primary wobbly-border-sm inline-block px-5 py-3 font-nav-label text-[10px] uppercase tracking-widest"
+          >
+            Open Family Vault
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!self.computed_chart) {
+    return (
+      <div className="p-6 md:p-8 max-w-3xl mx-auto">
+        <div className="glass-panel wobbly-border p-8 text-center">
+          <p className="font-body-md text-sm text-on-surface-variant mb-4">
+            Your chart hasn&apos;t been computed yet.
+          </p>
+          <button
+            onClick={async () => {
+              const updated = await profilesApi.recompute(self.id);
+              setSelf(updated);
+            }}
+            className="btn-primary wobbly-border-sm px-4 py-2 font-nav-label text-[10px] uppercase tracking-widest"
+          >
+            Compute now
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
         <h2 className="font-headline-md text-2xl text-primary mb-2">
-          Birth Chart <span className="font-annotation-sm text-3xl text-solar-gold">Viewer</span>
+          Birth Chart{" "}
+          <span className="font-annotation-sm text-3xl text-solar-gold">
+            Viewer
+          </span>
         </h2>
         <p className="font-nav-label text-nav-label text-on-surface-variant uppercase tracking-[0.2em]">
-          YOUR CELESTIAL BLUEPRINT
+          {self.name.toUpperCase()} · {self.birth_date}
+          {self.birth_time ? ` · ${self.birth_time}` : ""}
         </p>
       </div>
 
       <Tabs defaultValue="natal" className="w-full">
-        <TabsList className="bg-surface-container wobbly-border-sm p-1 mb-8">
+        <TabsList className="bg-surface-container wobbly-border-sm p-1 mb-6">
           <TabsTrigger
             value="natal"
             className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
           >
-            Natal Chart
+            Natal
           </TabsTrigger>
           <TabsTrigger
             value="dasha"
             className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
           >
-            Dasha Timeline
+            Dasha
           </TabsTrigger>
           <TabsTrigger
             value="transits"
@@ -42,68 +140,51 @@ export default function ChartPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="natal">
-          <div className="glass-panel wobbly-border p-8 min-h-[400px] flex items-center justify-center">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-outline-variant mb-4">
-                auto_awesome
-              </span>
-              <p className="font-annotation-sm text-lg text-solar-gold mb-2">
-                Chart visualization coming soon
-              </p>
-              <p className="font-body-md text-sm text-on-surface-variant">
-                Your natal chart SVG will render here once computed via the chat.
-              </p>
+        <TabsContent value="natal" className="space-y-4">
+          {svg && (
+            <div className="flex justify-center">
+              <ChartSvgCard svg={svg} />
             </div>
+          )}
+          <div className="flex justify-start">
+            <BirthChartCard data={self.computed_chart} />
           </div>
         </TabsContent>
 
         <TabsContent value="dasha">
-          <div className="glass-panel wobbly-border p-8 min-h-[400px] flex items-center justify-center">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-outline-variant mb-4">
-                timeline
-              </span>
-              <p className="font-annotation-sm text-lg text-solar-gold mb-2">
-                Dasha timeline visualization
-              </p>
-              <p className="font-body-md text-sm text-on-surface-variant">
-                Ask about your Dasha periods in the chat to populate this view.
-              </p>
+          {self.computed_dashas ? (
+            <div className="flex justify-start">
+              <DashaTimelineCard data={self.computed_dashas} />
             </div>
-          </div>
+          ) : (
+            <p className="font-body-md text-sm text-on-surface-variant">
+              No dasha data — recompute the profile.
+            </p>
+          )}
         </TabsContent>
 
         <TabsContent value="transits">
-          <div className="glass-panel wobbly-border p-8 min-h-[400px] flex items-center justify-center">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-outline-variant mb-4">
-                radar
-              </span>
-              <p className="font-annotation-sm text-lg text-solar-gold mb-2">
-                Current transits overlay
-              </p>
-              <p className="font-body-md text-sm text-on-surface-variant">
-                Real-time transit data will be overlaid on your natal chart.
-              </p>
+          {transits ? (
+            <div className="flex justify-start">
+              <DailyTransitsCard data={transits} />
             </div>
-          </div>
+          ) : (
+            <p className="font-body-md text-sm text-on-surface-variant">
+              Loading transits…
+            </p>
+          )}
         </TabsContent>
 
         <TabsContent value="nakshatra">
-          <div className="glass-panel wobbly-border p-8 min-h-[400px] flex items-center justify-center">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-outline-variant mb-4">
-                star
-              </span>
-              <p className="font-annotation-sm text-lg text-solar-gold mb-2">
-                Nakshatra wheel
-              </p>
-              <p className="font-body-md text-sm text-on-surface-variant">
-                Your birth star and its cosmic connections will appear here.
-              </p>
+          {nak ? (
+            <div className="flex justify-start">
+              <NakshatraCard data={nak} />
             </div>
-          </div>
+          ) : (
+            <p className="font-body-md text-sm text-on-surface-variant">
+              Loading nakshatra…
+            </p>
+          )}
         </TabsContent>
       </Tabs>
     </div>

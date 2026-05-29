@@ -1,4 +1,27 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
+function hasSessionCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie
+    .split(";")
+    .some((c) => c.trim().startsWith("astrophage_session="));
+}
+
 export default function HeroSection() {
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  useEffect(() => {
+    setIsAuthed(hasSessionCookie());
+  }, []);
+
+  const primaryHref = isAuthed ? "/chat" : "/register";
+  const primaryLabel = isAuthed ? "OPEN ASTROPHAGE" : "GENERATE YOUR BIRTH CHART";
+  const secondaryHref = isAuthed ? "/chart" : "/login";
+  const secondaryLabel = isAuthed ? "VIEW MY CHART" : "SIGN IN";
+
   return (
     <section className="relative min-h-[90vh] flex items-center px-margin-mobile md:px-margin-desktop overflow-hidden max-w-[1440px] mx-auto mt-24">
       <div className="grid grid-cols-4 md:grid-cols-12 gap-gutter w-full">
@@ -30,14 +53,22 @@ export default function HeroSection() {
                 ></path>
               </svg>
             </div>
-            <button className="btn-primary wobbly-border font-nav-label text-nav-label px-8 py-4 flex items-center justify-center gap-3 uppercase tracking-[0.15em]">
-              GENERATE YOUR BIRTH CHART
+            <Link
+              href={primaryHref}
+              className="btn-primary wobbly-border font-nav-label text-nav-label px-8 py-4 flex items-center justify-center gap-3 uppercase tracking-[0.15em]"
+            >
+              {primaryLabel}
               <span className="material-symbols-outlined">rocket_launch</span>
-            </button>
-            <button className="btn-ghost wobbly-border font-nav-label text-nav-label px-8 py-4 flex items-center justify-center gap-3 uppercase tracking-[0.15em] hover:translate-x-1 hover:translate-y-1">
-              VIEW DEMO
-              <span className="material-symbols-outlined">play_circle</span>
-            </button>
+            </Link>
+            <Link
+              href={secondaryHref}
+              className="btn-ghost wobbly-border font-nav-label text-nav-label px-8 py-4 flex items-center justify-center gap-3 uppercase tracking-[0.15em] hover:translate-x-1 hover:translate-y-1"
+            >
+              {secondaryLabel}
+              <span className="material-symbols-outlined">
+                {isAuthed ? "stars" : "login"}
+              </span>
+            </Link>
           </div>
         </div>
         <div className="col-span-4 md:col-start-3 md:col-span-8 mt-48 relative">

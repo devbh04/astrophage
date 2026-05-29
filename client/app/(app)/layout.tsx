@@ -13,22 +13,19 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, setUser, sidebarOpen } = useAppStore();
+  const { user, setUser, setLanguage, sidebarOpen } = useAppStore();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const me = await authApi.me();
+    authApi
+      .me()
+      .then((me) => {
         setUser(me);
-      } catch {
-        router.push("/login");
-      } finally {
-        setLoading(false);
-      }
-    };
-    checkAuth();
-  }, [router, setUser]);
+        if (me.default_language) setLanguage(me.default_language);
+      })
+      .catch(() => router.push("/login"))
+      .finally(() => setLoading(false));
+  }, [router, setUser, setLanguage]);
 
   if (loading) {
     return (
@@ -51,7 +48,7 @@ export default function AppLayout({
       <div
         className={`flex-1 flex flex-col transition-all duration-300 ${
           sidebarOpen ? "md:ml-72" : "md:ml-20"
-        }`}
+        } pb-16 md:pb-0`}
       >
         <Topbar />
         <main className="flex-1 overflow-auto">{children}</main>
