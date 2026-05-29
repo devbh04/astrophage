@@ -1,248 +1,248 @@
 """
-Knowledge ingestion CLI.
+Knowledge Ingestion Script.
 
-Walks ``backend/knowledge_base/*.md``, splits each file into chunks of at most
-600 tokens with 100-token overlap, embeds each chunk with
-``text-embedding-004``, and upserts the chunks into the Qdrant collection
-``astrophage_knowledge``.
+Reads all .md files from backend/knowledge_base/, chunks them into large
+sections, embeds with gemini-embedding-001 (RETRIEVAL_DOCUMENT, 768 dims),
+and upserts into the Qdrant Cloud collection.
 
-Run:
+Auto-creates the collection if it doesn't exist.
+
+Usage:
+    cd backend
     uv run python scripts/ingest_knowledge.py
-    uv run python scripts/ingest_knowledge.py --dry-run
+
+Embedding parity with knowledge_lookup.py:
+    - Same model: gemini-embedding-001 (from EMBEDDING_MODEL env var)
+    - Same dimensionality: 768
+    - Same normalization: L2 normalize for gemini-embedding-001
+    - Ingest uses task_type=RETRIEVAL_DOCUMENT
+    - Lookup uses task_type=RETRIEVAL_QUERY
 """
 
-from __future__ import annotations
-
-import argparse
-import asyncio
-import hashlib
-
-import re
+import math
+import os
+import sys
+import time
+import uuid
 from pathlib import Path
-from typing import Iterable, NamedTuple
 
-# We avoid hard top-level imports that require credentials so the module
-# can be imported in test environments without network.
-try:
-    from app.config import get_settings  # type: ignore
-except Exception:  # pragma: no cover
-    get_settings = None  # type: ignore
+# ── Add project root to path so we can import app.config ───────
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from google import genai
+from google.genai import types
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
-CHUNK_TOKENS = 600
-OVERLAP_TOKENS = 100
-COLLECTION_NAME = "astrophage_knowledge"
-EMBED_DIM = 768
+from app.config import get_settings
 
+# ── Constants ──────────────────────────────────────────────────
 
-class Chunk(NamedTuple):
-    text: str
-    source: str
-    heading_path: list[str]
-    chunk_index: int
+EMBED_DIM = 768                  # must match knowledge_lookup.py
+CHUNK_SIZE = 2000                # characters per chunk (large to reduce API calls)
+CHUNK_OVERLAP = 300              # overlap so we don't split mid-sentence
+BATCH_SIZE = 10                  # embed up to 10 texts per API call
+RATE_LIMIT_WAIT = 70             # seconds to wait on 429
 
 
-# ── Chunking ────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────
 
+def chunk_markdown(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    """
+    Split markdown text into overlapping chunks, preferring section
+    boundaries (## headings) as split points when possible.
+    """
+    sections: list[str] = []
+    current = ""
 
-_TOKEN_RE = re.compile(r"\w+|[^\w\s]")
-
-
-def tokenize(text: str) -> list[str]:
-    """Crude whitespace+punctuation tokenizer (kept dependency-free)."""
-    return _TOKEN_RE.findall(text)
-
-
-def detokenize(tokens: list[str]) -> str:
-    return " ".join(tokens)
-
-
-def split_by_headings(markdown: str) -> list[tuple[list[str], str]]:
-    """Split markdown into (heading_path, body) pairs using ATX headings."""
-    sections: list[tuple[list[str], str]] = []
-    current_path: list[str] = []
-    current_lines: list[str] = []
-    heading_stack: list[tuple[int, str]] = []
-
-    def flush():
-        if current_lines:
-            body = "\n".join(current_lines).strip()
-            if body:
-                sections.append((list(current_path), body))
-
-    for line in markdown.splitlines():
-        m = re.match(r"^(#{1,6})\s+(.*)$", line)
-        if m:
-            flush()
-            current_lines = []
-            level = len(m.group(1))
-            heading = m.group(2).strip()
-            # Truncate stack to enclosing levels
-            heading_stack = [(lvl, txt) for lvl, txt in heading_stack if lvl < level]
-            heading_stack.append((level, heading))
-            current_path = [txt for _, txt in heading_stack]
+    for line in text.split("\n"):
+        # Split at ## headings if current chunk is big enough
+        if line.startswith("## ") and len(current) >= chunk_size // 2:
+            sections.append(current.strip())
+            current = line + "\n"
         else:
-            current_lines.append(line)
-    flush()
-    return sections
+            current += line + "\n"
+
+    if current.strip():
+        sections.append(current.strip())
+
+    # Now break any oversized sections into character-level chunks
+    chunks: list[str] = []
+    for section in sections:
+        if len(section) <= chunk_size:
+            chunks.append(section)
+        else:
+            start = 0
+            while start < len(section):
+                end = start + chunk_size
+                chunks.append(section[start:end])
+                start += chunk_size - overlap
+
+    return [c for c in chunks if len(c.strip()) > 50]  # drop tiny fragments
 
 
-def chunk_markdown(
-    text: str,
-    *,
-    source: str,
-    max_tokens: int = CHUNK_TOKENS,
-    overlap: int = OVERLAP_TOKENS,
-) -> list[Chunk]:
-    """Chunk markdown by headings then into ≤ `max_tokens` windows with overlap."""
-    sections = split_by_headings(text)
-    chunks: list[Chunk] = []
-    chunk_idx = 0
-    for heading_path, body in sections:
-        tokens = tokenize(body)
-        if not tokens:
-            continue
-        if len(tokens) <= max_tokens:
-            chunks.append(Chunk(detokenize(tokens), source, heading_path, chunk_idx))
-            chunk_idx += 1
-            continue
-        # Sliding window with overlap
-        i = 0
-        step = max(1, max_tokens - overlap)
-        while i < len(tokens):
-            window = tokens[i : i + max_tokens]
-            if not window:
-                break
-            chunks.append(Chunk(detokenize(window), source, heading_path, chunk_idx))
-            chunk_idx += 1
-            if i + max_tokens >= len(tokens):
-                break
-            i += step
-    return chunks
+def l2_normalize(values: list[float]) -> list[float]:
+    """L2 normalize a vector (required for gemini-embedding-001 at non-3072 dims)."""
+    norm = math.sqrt(sum(v * v for v in values))
+    if norm == 0:
+        return values
+    return [v / norm for v in values]
 
 
-def stable_chunk_id(source: str, chunk_index: int) -> str:
-    """Deterministic chunk id derived from source + chunk_index."""
-    h = hashlib.sha1(f"{source}:{chunk_index}".encode("utf-8")).hexdigest()
-    return h
-
-
-# ── Embedding + upsert ──────────────────────────────────────────
-
-
-async def _embed(client, text: str) -> list[float]:
-    resp = client.models.embed_content(model="text-embedding-004", contents=[text])
-    # google.genai returns ``EmbedContentResponse`` with `embeddings[0].values`.
-    if hasattr(resp, "embeddings") and resp.embeddings:
-        return list(resp.embeddings[0].values)
-    if isinstance(resp, dict) and "embeddings" in resp:
-        return list(resp["embeddings"][0]["values"])
-    raise RuntimeError("Unexpected embed_content response")
-
-
-async def ingest_directory(
-    md_dir: Path,
-    *,
-    dry_run: bool = False,
-    google_client=None,
-    qdrant_client=None,
-) -> dict:
+def embed_batch_with_retry(
+    client: genai.Client,
+    texts: list[str],
+    model: str,
+) -> list[list[float]]:
     """
-    Ingest every .md file under `md_dir`.
-
-    `google_client` and `qdrant_client` are injectable for testing — when
-    None, real clients are constructed lazily.
-
-    Returns a summary ``{files, chunks, upserted}`` dict.
+    Embed a batch of texts with RETRIEVAL_DOCUMENT task type.
+    Retries on rate limit (429) after waiting RATE_LIMIT_WAIT seconds.
     """
-    files = sorted(p for p in md_dir.glob("*.md") if p.is_file())
-    all_chunks: list[Chunk] = []
-    for path in files:
-        text = path.read_text(encoding="utf-8")
-        all_chunks.extend(chunk_markdown(text, source=path.name))
-
-    if dry_run:
-        return {"files": len(files), "chunks": len(all_chunks), "upserted": 0, "dry_run": True}
-
-    # Lazy client construction
-    if google_client is None:
-        from google import genai  # type: ignore
-        settings = get_settings() if get_settings else None
-        api_key = settings.google_api_key if settings else os.environ.get("GOOGLE_API_KEY", "")
-        google_client = genai.Client(api_key=api_key)
-
-    if qdrant_client is None:
-        from qdrant_client import AsyncQdrantClient  # type: ignore
-        from qdrant_client.http.models import Distance, VectorParams  # type: ignore
-        settings = get_settings() if get_settings else None
-        url = settings.qdrant_url if settings else os.environ.get("QDRANT_URL", "")
-        api_key = settings.qdrant_api_key if settings else os.environ.get("QDRANT_API_KEY", "")
-        qdrant_client = AsyncQdrantClient(url=url, api_key=api_key)
-        # Create collection if it doesn't exist
+    while True:
         try:
-            await qdrant_client.get_collection(COLLECTION_NAME)
-        except Exception:
-            await qdrant_client.create_collection(
-                collection_name=COLLECTION_NAME,
-                vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE),
+            config = types.EmbedContentConfig(
+                output_dimensionality=EMBED_DIM,
+                task_type="RETRIEVAL_DOCUMENT",
+            )
+            resp = client.models.embed_content(
+                model=model,
+                contents=texts,
+                config=config,
             )
 
-    from qdrant_client.http.models import PointStruct  # type: ignore
+            vectors: list[list[float]] = []
+            for emb in resp.embeddings:
+                vals = list(emb.values)
+                if len(vals) > EMBED_DIM:
+                    vals = vals[:EMBED_DIM]
+                # L2 normalize for gemini-embedding-001 with non-3072 dims
+                if "embedding-001" in model:
+                    vals = l2_normalize(vals)
+                vectors.append(vals)
 
-    points = []
-    for chunk in all_chunks:
-        vec = await _embed(google_client, chunk.text)
-        points.append(
-            PointStruct(
-                id=stable_chunk_id(chunk.source, chunk.chunk_index),
-                vector=vec,
-                payload={
-                    "text": chunk.text,
-                    "source": chunk.source,
-                    "heading_path": chunk.heading_path,
-                    "chunk_index": chunk.chunk_index,
-                },
+            return vectors
+
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "resource" in err_str or "quota" in err_str or "rate" in err_str:
+                print(f"  ⏳ Rate limited. Waiting {RATE_LIMIT_WAIT}s before retry...")
+                time.sleep(RATE_LIMIT_WAIT)
+                continue
+            else:
+                raise
+
+
+# ── Main ───────────────────────────────────────────────────────
+
+def main():
+    settings = get_settings()
+
+    # Validate config
+    if not settings.google_api_key:
+        print("❌ GOOGLE_API_KEY not set in .env")
+        sys.exit(1)
+    if not settings.qdrant_url or not settings.qdrant_api_key:
+        print("❌ QDRANT_URL or QDRANT_API_KEY not set in .env")
+        sys.exit(1)
+
+    model = settings.embedding_model or "gemini-embedding-001"
+    collection = settings.qdrant_collection or "astrophage_knowledge"
+
+    print(f"🔧 Embedding model:   {model}")
+    print(f"🔧 Vector dimensions: {EMBED_DIM}")
+    print(f"🔧 Qdrant collection: {collection}")
+    print(f"🔧 Chunk size:        {CHUNK_SIZE} chars (overlap {CHUNK_OVERLAP})")
+    print()
+
+    # Initialize clients
+    ai_client = genai.Client(api_key=settings.google_api_key)
+    qdrant = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+
+    # ── Create collection if it doesn't exist ───────────────────
+    existing = [c.name for c in qdrant.get_collections().collections]
+    if collection in existing:
+        print(f"✅ Collection '{collection}' exists. Will upsert (overwrite duplicates).")
+        # Wipe existing data so we get a clean re-ingest
+        qdrant.delete_collection(collection)
+        print(f"   Deleted old data. Recreating...")
+
+    qdrant.create_collection(
+        collection_name=collection,
+        vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE),
+    )
+    print(f"✅ Collection '{collection}' ready ({EMBED_DIM}d, cosine).\n")
+
+    # ── Load and chunk all markdown files ───────────────────────
+    kb_dir = Path(__file__).resolve().parent.parent / "knowledge_base"
+    md_files = sorted(kb_dir.glob("*.md"))
+
+    if not md_files:
+        print(f"❌ No .md files found in {kb_dir}")
+        sys.exit(0)
+
+    print(f"📂 Found {len(md_files)} knowledge files:\n")
+
+    all_chunks: list[dict] = []  # {text, source, chunk_index}
+
+    for fpath in md_files:
+        text = fpath.read_text(encoding="utf-8")
+        chunks = chunk_markdown(text)
+        print(f"  📄 {fpath.name} → {len(chunks)} chunks ({len(text):,} chars)")
+        for i, chunk in enumerate(chunks):
+            all_chunks.append({
+                "text": chunk,
+                "source": fpath.name,
+                "chunk_index": i,
+            })
+
+    print(f"\n📊 Total chunks: {len(all_chunks)}")
+    total_batches = math.ceil(len(all_chunks) / BATCH_SIZE)
+    print(f"📊 Batches ({BATCH_SIZE}/batch): {total_batches}")
+    print()
+
+    # ── Embed in batches and upsert ─────────────────────────────
+    points: list[PointStruct] = []
+
+    for batch_idx in range(0, len(all_chunks), BATCH_SIZE):
+        batch = all_chunks[batch_idx : batch_idx + BATCH_SIZE]
+        batch_num = (batch_idx // BATCH_SIZE) + 1
+        print(f"  🔄 Batch {batch_num}/{total_batches} ({len(batch)} chunks)...", end=" ", flush=True)
+
+        texts = [c["text"] for c in batch]
+        vectors = embed_batch_with_retry(ai_client, texts, model)
+
+        for chunk_meta, vector in zip(batch, vectors):
+            points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=vector,
+                    payload={
+                        "text": chunk_meta["text"],
+                        "source": chunk_meta["source"],
+                        "chunk_index": chunk_meta["chunk_index"],
+                    },
+                )
             )
-        )
+
+        print("✅")
+
+    # ── Upsert all points to Qdrant ─────────────────────────────
     if points:
-        await qdrant_client.upsert(collection_name=COLLECTION_NAME, points=points)
+        print(f"\n⬆️  Upserting {len(points)} vectors to Qdrant...", end=" ", flush=True)
+        # Upsert in batches of 100 to avoid payload size limits
+        for i in range(0, len(points), 100):
+            qdrant.upsert(
+                collection_name=collection,
+                points=points[i : i + 100],
+            )
+        print("✅")
 
-    return {"files": len(files), "chunks": len(all_chunks), "upserted": len(points), "dry_run": False}
-
-
-def _default_md_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "knowledge_base"
-
-
-def main(argv: Iterable[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Ingest the AstroAgent knowledge base into Qdrant")
-    parser.add_argument("--dry-run", action="store_true", help="Don't call embedding or Qdrant APIs")
-    parser.add_argument("--md-dir", type=Path, default=_default_md_dir(), help="Markdown source directory")
-    args = parser.parse_args(list(argv) if argv is not None else None)
-
-    summary = asyncio.run(ingest_directory(args.md_dir, dry_run=args.dry_run))
-    if args.dry_run:
-        print(f"[dry-run] files={summary['files']} chunks={summary['chunks']}")
-    else:
-        print(
-            f"ingested files={summary['files']} chunks={summary['chunks']} "
-            f"upserted={summary['upserted']}"
-        )
-    return 0
+    # ── Verify ──────────────────────────────────────────────────
+    info = qdrant.get_collection(collection)
+    print(f"\n🎉 Done! Collection '{collection}' now has {info.points_count} vectors.")
+    print(f"   Dimensions: {EMBED_DIM}, Distance: cosine")
+    print(f"   Ready for knowledge_lookup queries.\n")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
-
-
-__all__ = [
-    "Chunk",
-    "chunk_markdown",
-    "stable_chunk_id",
-    "ingest_directory",
-    "main",
-    "tokenize",
-    "split_by_headings",
-    "COLLECTION_NAME",
-    "EMBED_DIM",
-]
+    main()

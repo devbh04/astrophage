@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # Google AI
     google_api_key: str = ""
     llm_model: str = "gemini-3-flash-preview"
-    embedding_model: str = "text-embedding-004"
+    embedding_model: str = "gemini-embedding-001"
 
     # Supabase
     supabase_url: str = ""

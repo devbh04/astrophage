@@ -83,8 +83,14 @@ def _redact(message: str) -> str:
 
 
 async def _authenticate_or_close(websocket: WebSocket) -> dict | None:
-    cookies = websocket.cookies
-    token = cookies.get("astrophage_session")
+    """
+    Try cookie first (same-origin / production), then fall back to a
+    `?token=...` query param (cross-origin dev — browsers don't send
+    SameSite=lax cookies on cross-origin WS handshakes).
+    """
+    token = websocket.cookies.get("astrophage_session")
+    if not token:
+        token = websocket.query_params.get("token")
     if not token:
         try:
             await websocket.close(code=4001)
