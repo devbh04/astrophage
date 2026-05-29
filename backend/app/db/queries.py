@@ -223,3 +223,40 @@ async def get_self_profile(user_id: str) -> dict | None:
         .execute()
     )
     return result.data[0] if result.data else None
+
+
+# ── Profile updates (Phase 4+) ─────────────────────────────────
+
+
+async def update_profile(profile_id: str, updates: dict) -> dict | None:
+    """Generic profile update — used to refresh place, birth time, etc."""
+    sb = get_supabase()
+    result = (
+        sb.table("birth_profiles")
+        .update(updates)
+        .eq("id", profile_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def update_conversation_title(conversation_id: str, title: str) -> dict | None:
+    sb = get_supabase()
+    result = (
+        sb.table("conversations")
+        .update({"title": title})
+        .eq("id", conversation_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def delete_conversation(conversation_id: str) -> bool:
+    sb = get_supabase()
+    result = (
+        sb.table("conversations")
+        .delete()
+        .eq("id", conversation_id)
+        .execute()
+    )
+    return bool(result.data)

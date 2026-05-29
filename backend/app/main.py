@@ -15,7 +15,6 @@ import json
 import logging
 import re
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,12 +26,14 @@ from app.auth.service import decode_jwt
 from app.api.profiles import router as profiles_router
 from app.api.conversations import router as conversations_router
 from app.api.panchang import router as panchang_router
+from app.api.tools import router as tools_router
 from app.agent.graph import agent_graph
 from app.db.queries import (
     get_user_by_id,
     create_conversation,
     create_message,
     get_self_profile,
+    get_conversation_messages,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ app.include_router(auth_router)
 app.include_router(profiles_router)
 app.include_router(conversations_router)
 app.include_router(panchang_router)
+app.include_router(tools_router)
 
 
 @app.get("/health")
@@ -73,7 +75,7 @@ async def health():
 # ── Helpers ─────────────────────────────────────────────────────
 
 
-SECRET_RE = re.compile(r"(?:GOOGLE_API_KEY|QDRANT_API_KEY|JWT_SECRET)\s*=\s*\S+")
+SECRET_RE = re.compile(r"(?:GOOGLE_API_KEY|QDRANT_API_KEY|JWT_SECRET)\s*[=:]\s*\S+")
 
 
 def _redact(message: str) -> str:
@@ -81,7 +83,6 @@ def _redact(message: str) -> str:
 
 
 async def _authenticate_or_close(websocket: WebSocket) -> dict | None:
-    """Decode the JWT cookie, return the user dict, or close with 4001."""
     cookies = websocket.cookies
     token = cookies.get("astrophage_session")
     if not token:
@@ -105,7 +106,6 @@ async def _authenticate_or_close(websocket: WebSocket) -> dict | None:
 
 
 async def _load_self_profile(user_id: str) -> tuple[dict | None, dict | None, str | None]:
-    """Return (natal_chart, computed_dashas, profile_id) for the user's self profile."""
     try:
         profile = await get_self_profile(user_id)
     except Exception:
@@ -147,20 +147,19 @@ async def _stream_agent_turn(
     thread_id: str,
     initial_state: dict,
     conversation_id: str,
-) -> None:
-    """Run a graph turn and forward events as wire frames."""
+) -> bool:
+    """Run a graph turn. Returns True if the turn ended on a HiTL interrupt."""
     config = {"configurable": {"thread_id": thread_id}}
     final_text = ""
     streamed_any_token = False
-    chart_svg = None
-    structured_card = None
-    interrupted = False
 
     try:
         async for event in agent_graph.astream_events(initial_state, config=config, version="v2"):
             etype = event.get("event")
             data = event.get("data") or {}
             name = event.get("name")
+            metadata = event.get("metadata") or {}
+            node = metadata.get("langgraph_node") or ""
 
             if etype == "on_tool_start":
                 await websocket.send_json({
@@ -176,24 +175,18 @@ async def _stream_agent_turn(
             elif etype == "on_chat_model_stream":
                 chunk = data.get("chunk")
                 content = getattr(chunk, "content", "") if chunk is not None else ""
-                # Only stream tokens from the editor pass to avoid leaking
-                # internal reasoning / classifier tokens.
-                tags = event.get("tags") or []
-                metadata = event.get("metadata") or {}
-                node = metadata.get("langgraph_node") or ""
-                if node == "editor" or "editor" in tags:
-                    if content:
-                        await websocket.send_json({"type": "token", "content": content})
-                        streamed_any_token = True
+                if (node == "editor" or "editor" in (event.get("tags") or [])) and content:
+                    await websocket.send_json({"type": "token", "content": content})
+                    streamed_any_token = True
             elif etype == "on_custom_event" and name == "chart_svg":
-                chart_svg = data
-                await websocket.send_json({"type": "chart_svg", "svg": data})
+                if isinstance(data, str) and data.strip():
+                    await websocket.send_json({"type": "chart_svg", "svg": data})
             elif etype == "on_custom_event" and name == "structured_card":
-                structured_card = data
+                payload = data if isinstance(data, dict) else {"data": data}
                 await websocket.send_json({
                     "type": "structured_card",
-                    "card_type": (data or {}).get("card_type", "info") if isinstance(data, dict) else "info",
-                    "data": data if isinstance(data, dict) else {"value": data},
+                    "card_type": payload.get("card_type", "info"),
+                    "data": payload.get("data", {}),
                 })
             elif etype == "on_chain_end" and name == "response":
                 output = data.get("output") or {}
@@ -201,23 +194,22 @@ async def _stream_agent_turn(
                 if draft:
                     final_text = draft
 
-        # Inspect graph state for interrupts (sensitive turn)
         snapshot = agent_graph.get_state(config)
-        snapshot_values = snapshot.values if hasattr(snapshot, "values") else {}
+        snapshot_values = getattr(snapshot, "values", {}) or {}
         if snapshot_values.get("awaiting_confirmation") and snapshot_values.get("sensitive_flag"):
-            preview = snapshot_values.get("confirmation_preview") or final_text or "Want me to continue?"
+            preview = (
+                snapshot_values.get("confirmation_preview")
+                or final_text
+                or "Want me to continue?"
+            )
             await websocket.send_json({"type": "confirmation_required", "preview": preview})
-            interrupted = True
-            return
+            return True
 
-        # If we never streamed any token (eg. no editor pass), send the final
-        # text as a single token frame so the client always receives content.
         if not streamed_any_token and final_text:
             await websocket.send_json({"type": "token", "content": final_text})
 
         await websocket.send_json({"type": "done"})
 
-        # Persist assistant message
         if final_text:
             try:
                 await create_message(
@@ -229,8 +221,9 @@ async def _stream_agent_turn(
             except Exception as exc:
                 logger.warning("Failed to persist assistant message: %s", exc)
 
+        return False
+
     except WebSocketDisconnect:
-        # Client disconnected mid-turn — do NOT persist a partial message.
         raise
     except Exception as exc:
         logger.exception("Agent error")
@@ -238,9 +231,7 @@ async def _stream_agent_turn(
             await websocket.send_json({"type": "error", "message": _redact(str(exc))})
         except Exception:
             pass
-    finally:
-        # If a sensitive interrupt occurred, do not emit done here.
-        _ = interrupted
+        return False
 
 
 async def _resume_with_confirmation(
@@ -250,11 +241,9 @@ async def _resume_with_confirmation(
     conversation_id: str,
     language: str,
 ) -> None:
-    """Resume the graph after a HiTL interrupt."""
     config = {"configurable": {"thread_id": thread_id}}
 
     if not confirmed:
-        # Skip the editor entirely; emit a single canned redirect.
         canned = {
             "en": "Understood — let's set that aside. How else can I help?",
             "hi": "ठीक है, उसे फिर कभी देखेंगे। और किस बारे में बात करें?",
@@ -276,16 +265,13 @@ async def _resume_with_confirmation(
             pass
         return
 
-    # Resume into the editor pass.
     try:
-        # langgraph >= 0.2 supports Command(resume=...).
         from langgraph.types import Command  # type: ignore
 
         resumed_iter = agent_graph.astream_events(
             Command(resume={"confirmed": True}), config=config, version="v2"
         )
     except Exception:
-        # Fallback: inject confirmed=True via update_state.
         agent_graph.update_state(config, {"confirmed": True})
         resumed_iter = agent_graph.astream_events(None, config=config, version="v2")
 
@@ -304,6 +290,16 @@ async def _resume_with_confirmation(
             if content:
                 await websocket.send_json({"type": "token", "content": content})
                 streamed_any_token = True
+        elif etype == "on_custom_event" and name == "chart_svg":
+            if isinstance(data, str) and data.strip():
+                await websocket.send_json({"type": "chart_svg", "svg": data})
+        elif etype == "on_custom_event" and name == "structured_card":
+            payload = data if isinstance(data, dict) else {"data": data}
+            await websocket.send_json({
+                "type": "structured_card",
+                "card_type": payload.get("card_type", "info"),
+                "data": payload.get("data", {}),
+            })
         elif etype == "on_chain_end" and name == "response":
             output = data.get("output") or {}
             draft = (output or {}).get("draft_response") or ""
@@ -331,7 +327,12 @@ async def _resume_with_confirmation(
 
 @app.websocket("/ws/{session_id}")
 async def websocket_chat(websocket: WebSocket, session_id: str):
-    """Main WebSocket endpoint — full Phase 4 protocol."""
+    """
+    Main WebSocket endpoint — full Phase 4 protocol.
+
+    The session_id can be a literal "new" (fresh conversation), or a
+    conversation UUID to resume an existing conversation.
+    """
     await websocket.accept()
     user = await _authenticate_or_close(websocket)
     if not user:
@@ -339,15 +340,24 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
 
     natal_chart, active_dashas, profile_id = await _load_self_profile(user["id"])
 
+    # Either resume an existing conversation or create a new one.
+    conversation_id = session_id
+    if session_id == "new" or not session_id or session_id.startswith("session-"):
+        try:
+            conversation = await create_conversation(
+                user_id=user["id"],
+                profile_id=profile_id,
+                title="Chat session",
+            )
+            conversation_id = conversation["id"]
+        except Exception:
+            conversation_id = f"local:{session_id}"
+
+    # Tell the client which conversation we're on so they can persist it.
     try:
-        conversation = await create_conversation(
-            user_id=user["id"],
-            profile_id=profile_id,
-            title="Chat session",
-        )
-        conversation_id = conversation["id"]
+        await websocket.send_json({"type": "conversation", "conversation_id": conversation_id})
     except Exception:
-        conversation_id = f"local:{session_id}"
+        pass
 
     thread_id = f"{user['id']}:{conversation_id}"
     last_language = user.get("default_language") or "en"
@@ -381,7 +391,6 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
             if not content:
                 continue
 
-            # Persist user message
             try:
                 await create_message(
                     conversation_id=conversation_id,
