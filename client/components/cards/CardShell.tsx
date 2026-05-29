@@ -5,6 +5,7 @@ interface CardShellProps {
   badge?: string;
   icon?: ReactNode;
   accent?: "gold" | "violet" | "rose" | "teal";
+  fullWidth?: boolean;
   children: ReactNode;
 }
 
@@ -25,10 +26,11 @@ export default function CardShell({
   badge,
   icon,
   accent = "gold",
+  fullWidth,
   children,
 }: CardShellProps) {
   return (
-    <div className="relative max-w-[85%] md:max-w-[75%] glass-panel wobbly-border-sm overflow-hidden">
+    <div className={`relative glass-panel wobbly-border-sm overflow-hidden ${fullWidth ? 'w-full' : 'max-w-[85%] md:max-w-[75%]'}`}>
       <div className="tape-strip" />
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${ACCENT_BAR[accent]}`} />
       <div className="pl-5 pr-5 py-5">

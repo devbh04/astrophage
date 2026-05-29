@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { panchangApi, profilesApi, type PanchangData } from "@/lib/api";
 import PanchangCard from "@/components/cards/PanchangCard";
 import MuhurtaDialog from "@/components/calendar/MuhurtaDialog";
 
-const fmtDate = (d: Date) => d.toISOString().slice(0, 10);
+const fmtDate = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
 export default function CalendarPage() {
   const today = new Date();
@@ -88,122 +94,160 @@ export default function CalendarPage() {
     }
   };
 
+  const [sy, sm, sd] = selectedDate.split("-").map(Number);
+  const fmtSelected = new Date(sy, sm - 1, sd).toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
   return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h2 className="font-headline-md text-2xl text-primary mb-2">
+          <h2 className="font-headline-md text-2xl text-primary mb-1">
             Auspicious{" "}
             <span className="font-annotation-sm text-3xl text-solar-gold">
               Calendar
             </span>
           </h2>
-          <p className="font-nav-label text-nav-label text-on-surface-variant uppercase tracking-[0.2em]">
-            {monthName.toUpperCase()} {year} · {coords.place}
+          <p className="font-nav-label text-nav-label text-on-surface-variant uppercase tracking-[0.2em] mb-4">
+            {fmtSelected.toUpperCase()} · {coords.place}
           </p>
+          <div className="max-w-2xl border-l-2 border-solar-gold pl-4 py-1">
+            <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
+              Select any day to view its complete Panchang (Vedic almanac). 
+              Use this to check auspicious timings (Muhurta), daily planetary alignments, 
+              and inauspicious windows to avoid for important activities.
+            </p>
+          </div>
         </div>
         <button
           onClick={() => setMuhurtaOpen(true)}
-          className="btn-primary wobbly-border-sm px-6 py-3 font-nav-label text-xs uppercase tracking-widest"
+          className="btn-primary wobbly-border-sm px-5 py-2.5 font-nav-label text-xs uppercase tracking-widest mt-2"
         >
-          FIND MUHURTA
+          Find Muhurta
         </button>
       </div>
 
-      <div className="flex items-center justify-between mb-3 px-1">
-        <button
-          onClick={goPrev}
-          className="font-nav-label text-xs uppercase tracking-widest text-on-surface-variant hover:text-solar-gold"
-        >
-          ← Prev
-        </button>
-        <button
-          onClick={() => {
-            const t = new Date();
-            setYear(t.getFullYear());
-            setMonth(t.getMonth());
-            setSelectedDate(fmtDate(t));
-          }}
-          className="font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant hover:text-solar-gold"
-        >
-          Today
-        </button>
-        <button
-          onClick={goNext}
-          className="font-nav-label text-xs uppercase tracking-widest text-on-surface-variant hover:text-solar-gold"
-        >
-          Next →
-        </button>
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] items-start">
+        {/* LEFT — Panchang card */}
+        <div className="flex">
+          {loading ? (
+            <div className="glass-panel wobbly-border p-6 w-full text-center font-body-md text-sm text-on-surface-variant">
+              Loading panchang…
+            </div>
+          ) : panchang ? (
+            <div className="w-full">
+              <PanchangCard data={panchang} fullWidth />
+            </div>
+          ) : (
+            <div className="glass-panel wobbly-border p-6 w-full text-center font-body-md text-sm text-on-surface-variant">
+              No panchang available for this date.
+            </div>
+          )}
+        </div>
 
-      <div className="grid grid-cols-7 gap-2 mb-2">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-          <div
-            key={day}
-            className="text-center font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant py-2"
-          >
-            {day}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-2 mb-8">
-        {emptySlots.map((i) => (
-          <div key={`empty-${i}`} />
-        ))}
-        {days.map((day) => {
-          const dateStr = fmtDate(new Date(year, month, day));
-          const isToday =
-            day === today.getDate() &&
-            month === today.getMonth() &&
-            year === today.getFullYear();
-          const isSelected = dateStr === selectedDate;
-          return (
+        {/* RIGHT — compact calendar */}
+        <div className="glass-panel wobbly-border p-4">
+          <div className="flex items-center justify-between mb-3">
             <button
-              key={day}
-              onClick={() => setSelectedDate(dateStr)}
-              className={`aspect-square flex flex-col items-center justify-center p-2 wobbly-border-sm transition-all hover:bg-surface-container
-                ${
-                  isSelected
-                    ? "bg-solar-gold/20 border-solar-gold/60 ring-1 ring-solar-gold/40"
-                    : isToday
-                    ? "bg-surface-container border-solar-gold"
-                    : "bg-surface-container-lowest border-outline/20"
-                }`}
+              onClick={goPrev}
+              className="p-1.5 rounded-md hover:bg-surface-container text-on-surface-variant hover:text-solar-gold"
+              aria-label="Previous month"
             >
-              <span
-                className={`font-headline-md text-sm ${
-                  isSelected
-                    ? "text-solar-gold"
-                    : isToday
-                    ? "text-solar-gold"
-                    : "text-primary"
-                }`}
-              >
-                {day}
-              </span>
-              {isToday && (
-                <span className="w-1.5 h-1.5 rounded-full bg-solar-gold mt-1" />
-              )}
+              <ChevronLeft size={16} />
             </button>
-          );
-        })}
-      </div>
+            <div className="text-center">
+              <div className="font-headline-md text-base text-primary leading-tight">
+                {monthName}
+              </div>
+              <div className="font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                {year}
+              </div>
+            </div>
+            <button
+              onClick={goNext}
+              className="p-1.5 rounded-md hover:bg-surface-container text-on-surface-variant hover:text-solar-gold"
+              aria-label="Next month"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
 
-      <div>
-        {loading ? (
-          <div className="glass-panel wobbly-border p-6 text-center font-body-md text-sm text-on-surface-variant">
-            Loading panchang…
+          <button
+            onClick={() => {
+              const t = new Date();
+              setYear(t.getFullYear());
+              setMonth(t.getMonth());
+              setSelectedDate(fmtDate(t));
+            }}
+            className="w-full text-center font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant hover:text-solar-gold py-1 mb-2 border-b border-dashed border-outline/20"
+          >
+            Today
+          </button>
+
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+              <div
+                key={i}
+                className="text-center font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant py-1"
+              >
+                {d}
+              </div>
+            ))}
           </div>
-        ) : panchang ? (
-          <div className="flex justify-start">
-            <PanchangCard data={panchang} />
+
+          <div className="grid grid-cols-7 gap-1">
+            {emptySlots.map((i) => (
+              <div key={`empty-${i}`} />
+            ))}
+            {days.map((day) => {
+              const dateStr = fmtDate(new Date(year, month, day));
+              const isToday =
+                day === today.getDate() &&
+                month === today.getMonth() &&
+                year === today.getFullYear();
+              const isSelected = dateStr === selectedDate;
+              return (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDate(dateStr)}
+                  className={`aspect-square flex items-center justify-center wobbly-border-sm transition-all text-sm
+                    ${
+                      isSelected
+                        ? "bg-solar-gold/25 border-solar-gold/70 text-solar-gold ring-1 ring-solar-gold/40"
+                        : isToday
+                        ? "bg-surface-container border-solar-gold/60 text-solar-gold"
+                        : "bg-surface-container-lowest border-outline/20 text-primary hover:bg-surface-container/60"
+                    }`}
+                >
+                  <span className="font-headline-md leading-none">{day}</span>
+                </button>
+              );
+            })}
           </div>
-        ) : (
-          <div className="glass-panel wobbly-border p-6 text-center font-body-md text-sm text-on-surface-variant">
-            No panchang available for this date.
+
+          <div className="mt-4 pt-3 border-t border-dashed border-outline/20 space-y-1.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-nav-label text-[9px] uppercase tracking-widest text-on-surface-variant">
+                Selected
+              </span>
+              <span className="font-headline-md text-primary">{fmtSelected}</span>
+            </div>
+            <div className="flex items-center gap-3 text-[10px] font-body-md text-on-surface-variant">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 wobbly-border-sm bg-solar-gold/30 border border-solar-gold/60" />
+                Today
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 wobbly-border-sm bg-solar-gold/25 border border-solar-gold/70" />
+                Selected
+              </span>
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
       <MuhurtaDialog
