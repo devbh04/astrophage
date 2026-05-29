@@ -346,26 +346,19 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
 
     natal_chart, active_dashas, profile_id = await _load_self_profile(user["id"])
 
-    # Either resume an existing conversation or create a new one.
-    conversation_id = session_id
-    if session_id == "new" or not session_id or session_id.startswith("session-"):
-        try:
-            conversation = await create_conversation(
-                user_id=user["id"],
-                profile_id=profile_id,
-                title="Chat session",
-            )
-            conversation_id = conversation["id"]
-        except Exception:
-            conversation_id = f"local:{session_id}"
+    # Conversation is created lazily — only when the first real message arrives.
+    # If the session_id is an existing conversation UUID, we resume it.
+    conversation_id: str | None = None
+    if session_id and session_id != "new" and not session_id.startswith("session-"):
+        conversation_id = session_id
 
-    # Tell the client which conversation we're on so they can persist it.
+    # Tell the client which conversation we're on (may be null initially).
     try:
-        await websocket.send_json({"type": "conversation", "conversation_id": conversation_id})
+        await websocket.send_json({"type": "conversation", "conversation_id": conversation_id or ""})
     except Exception:
         pass
 
-    thread_id = f"{user['id']}:{conversation_id}"
+    thread_id = f"{user['id']}:{conversation_id or 'pending'}"
     last_language = user.get("default_language") or "en"
 
     try:
@@ -383,9 +376,10 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
 
             if msg_type == "confirmation":
                 confirmed = bool(data.get("confirmed", False))
-                await _resume_with_confirmation(
-                    websocket, thread_id, confirmed, conversation_id, last_language
-                )
+                if conversation_id:
+                    await _resume_with_confirmation(
+                        websocket, thread_id, confirmed, conversation_id, last_language
+                    )
                 continue
 
             if msg_type != "message":
@@ -396,6 +390,23 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
             last_language = language
             if not content:
                 continue
+
+            # Lazy conversation creation — only on first real message
+            if not conversation_id:
+                try:
+                    conversation = await create_conversation(
+                        user_id=user["id"],
+                        profile_id=profile_id,
+                        title=content[:50],
+                    )
+                    conversation_id = conversation["id"]
+                except Exception:
+                    conversation_id = f"local:{session_id}"
+                thread_id = f"{user['id']}:{conversation_id}"
+                try:
+                    await websocket.send_json({"type": "conversation", "conversation_id": conversation_id})
+                except Exception:
+                    pass
 
             try:
                 await create_message(

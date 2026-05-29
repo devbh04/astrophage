@@ -99,54 +99,56 @@ export default function ChartPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h2 className="font-headline-md text-2xl text-primary mb-2">
-          Birth Chart{" "}
-          <span className="font-annotation-sm text-3xl text-solar-gold">
-            Viewer
-          </span>
-        </h2>
-        <p className="font-nav-label text-nav-label text-on-surface-variant uppercase tracking-[0.2em]">
-          {self.name.toUpperCase()} · {self.birth_date}
-          {self.birth_time ? ` · ${self.birth_time}` : ""}
-        </p>
-      </div>
-
       <Tabs defaultValue="natal" className="w-full">
-        <TabsList className="bg-surface-container wobbly-border-sm p-1 mb-6">
-          <TabsTrigger
-            value="natal"
-            className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
-          >
-            Natal
-          </TabsTrigger>
-          <TabsTrigger
-            value="dasha"
-            className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
-          >
-            Dasha
-          </TabsTrigger>
-          <TabsTrigger
-            value="transits"
-            className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
-          >
-            Transits
-          </TabsTrigger>
-          <TabsTrigger
-            value="nakshatra"
-            className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
-          >
-            Nakshatra
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+          <div>
+            <h2 className="font-headline-md text-2xl text-primary mb-2">
+              Birth Chart{" "}
+              <span className="font-annotation-sm text-3xl text-solar-gold">
+                Viewer
+              </span>
+            </h2>
+            <p className="font-nav-label text-nav-label text-on-surface-variant uppercase tracking-[0.2em]">
+              {self.name.toUpperCase()} · {self.birth_date}
+              {self.birth_time ? ` · ${self.birth_time}` : ""}
+            </p>
+          </div>
 
-        <TabsContent value="natal" className="space-y-4">
+          <TabsList className="bg-surface-container wobbly-border-sm p-1 h-auto">
+            <TabsTrigger
+              value="natal"
+              className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
+            >
+              Natal
+            </TabsTrigger>
+            <TabsTrigger
+              value="dasha"
+              className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
+            >
+              Dasha
+            </TabsTrigger>
+            <TabsTrigger
+              value="transits"
+              className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
+            >
+              Transits
+            </TabsTrigger>
+            <TabsTrigger
+              value="nakshatra"
+              className="font-nav-label text-xs uppercase tracking-wider data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary"
+            >
+              Nakshatra
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="natal" className="grid grid-cols-1 lg:grid-cols-2 gap-5 w-full">
           {svg && (
-            <div className="flex justify-center">
+            <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
               <ChartSvgCard svg={svg} />
             </div>
           )}
-          <div className="flex justify-start">
+          <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
             <BirthChartCard data={self.computed_chart} />
           </div>
         </TabsContent>

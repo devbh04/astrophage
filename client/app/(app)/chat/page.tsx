@@ -65,10 +65,10 @@ export default function ChatPage() {
     const socket = new AstroWebSocket(wsKey);
 
     socket.on("conversation", (msg) => {
-      if (msg.conversation_id) {
+      if (msg.conversation_id && msg.conversation_id !== "") {
         setActiveConversationId(msg.conversation_id);
+        // Only update the URL once we have a real conversation
         if (!conversationParam) {
-          // replace URL so refresh resumes
           router.replace(`/chat?c=${msg.conversation_id}`);
         }
       }
