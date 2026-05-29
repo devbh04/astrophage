@@ -7,10 +7,11 @@ fluency, and length proportional to the question.
 
 from __future__ import annotations
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.agent.state import AgentState
+from app.agent._llm_text import llm_text
+from app.agent._llm_factory import make_chat
 from app.config import get_settings
 
 
@@ -28,12 +29,7 @@ Return ONLY the polished response — no preamble, no explanation."""
 
 
 async def editor_node(state: AgentState) -> dict:
-    settings = get_settings()
-    llm = ChatGoogleGenerativeAI(
-        model=settings.llm_model,
-        google_api_key=settings.google_api_key,
-        temperature=0.3,
-    )
+    llm = make_chat(temperature=0.3)
 
     draft = state.get("draft_response", "")
     language = state.get("language", "en")
@@ -46,7 +42,7 @@ async def editor_node(state: AgentState) -> dict:
             SystemMessage(content=EDITOR_SYSTEM_PROMPT.format(language=language)),
             HumanMessage(content=draft),
         ])
-        polished = (getattr(response, "content", "") or "").strip()
+        polished = (llm_text(getattr(response, "content", "")) or "").strip()
         if not polished:
             polished = draft
     except Exception:

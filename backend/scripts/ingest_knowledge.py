@@ -138,8 +138,8 @@ def main():
     settings = get_settings()
 
     # Validate config
-    if not settings.google_api_key:
-        print("❌ GOOGLE_API_KEY not set in .env")
+    if not settings.use_vertex and not settings.google_api_key:
+        print("❌ No GCP credentials or GOOGLE_API_KEY set in .env")
         sys.exit(1)
     if not settings.qdrant_url or not settings.qdrant_api_key:
         print("❌ QDRANT_URL or QDRANT_API_KEY not set in .env")
@@ -155,7 +155,17 @@ def main():
     print()
 
     # Initialize clients
-    ai_client = genai.Client(api_key=settings.google_api_key)
+    if settings.use_vertex:
+        ai_client = genai.Client(
+            vertexai=True,
+            project=settings.gcp_project,
+            location=settings.gcp_location,
+            credentials=settings.google_credentials(),
+        )
+        print(f"🔑 Auth mode:         Vertex AI (GCP service account)")
+    else:
+        ai_client = genai.Client(api_key=settings.google_api_key)
+        print(f"🔑 Auth mode:         API key")
     qdrant = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
 
     # ── Create collection if it doesn't exist ───────────────────

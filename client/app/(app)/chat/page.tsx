@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAppStore, createArtifactId } from "@/lib/store";
-import { AstroWebSocket } from "@/lib/websocket";
 import { conversationsApi } from "@/lib/api";
+import { chatApi, connectEventsSocket } from "@/lib/chat";
 import ChatMessage from "@/components/chat/ChatMessage";
 import ChatInput from "@/components/chat/ChatInput";
 import ToolActivityIndicator from "@/components/chat/ToolActivityIndicator";
@@ -22,8 +22,6 @@ export default function ChatPage() {
     language,
     artifacts,
     pushArtifact,
-    appendStreamingText,
-    finalizeStreamingText,
     clearArtifacts,
     hydrateFromMessages,
     isStreaming,
@@ -34,10 +32,9 @@ export default function ChatPage() {
     setActiveConversationId,
   } = useAppStore();
 
-  const [ws, setWs] = useState<AstroWebSocket | null>(null);
   const [confirmationPreview, setConfirmationPreview] = useState<string | null>(null);
+  const [convId, setConvId] = useState<string | null>(conversationParam);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const streamingMsgIdRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -47,140 +44,202 @@ export default function ChatPage() {
     scrollToBottom();
   }, [artifacts, activeTool, scrollToBottom]);
 
-  // Load existing messages when resuming a conversation
   useEffect(() => {
-    if (!conversationParam) return;
+    setConvId(conversationParam);
+  }, [conversationParam]);
+
+  // Hydrate history when arriving on an existing conversation
+  useEffect(() => {
+    if (!conversationParam) {
+      clearArtifacts();
+      setActiveConversationId(null);
+      return;
+    }
     setActiveConversationId(conversationParam);
     conversationsApi
       .messages(conversationParam)
       .then((msgs) => hydrateFromMessages(msgs))
       .catch(() => {});
-  }, [conversationParam, hydrateFromMessages, setActiveConversationId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationParam]);
 
-  // Connect WebSocket
+  // Live tool-event channel
   useEffect(() => {
     if (!user) return;
-
-    const wsKey = conversationParam || "new";
-    const socket = new AstroWebSocket(wsKey);
-
-    socket.on("conversation", (msg) => {
-      if (msg.conversation_id && msg.conversation_id !== "") {
-        setActiveConversationId(msg.conversation_id);
-        // Only update the URL once we have a real conversation
-        if (!conversationParam) {
-          router.replace(`/chat?c=${msg.conversation_id}`);
-        }
-      }
-    });
-
-    socket.on("tool_start", (msg) => {
-      setActiveTool({
-        name: msg.tool_name || "",
-        display: msg.display || "Processing...",
-      });
-    });
-
-    socket.on("tool_end", () => {
-      setActiveTool(null);
-    });
-
-    socket.on("token", (msg) => {
-      if (!streamingMsgIdRef.current) {
-        const id = createArtifactId();
-        streamingMsgIdRef.current = id;
-        pushArtifact({
-          kind: "text",
-          id,
-          role: "assistant",
-          content: "",
-          streaming: true,
-          created_at: new Date().toISOString(),
+    const close = connectEventsSocket((e) => {
+      if (e.type === "tool_start") {
+        setActiveTool({
+          name: e.tool_name,
+          display: `Running ${e.tool_name.replace(/_/g, " ")}…`,
         });
-        setStreaming(true);
+      } else if (e.type === "tool_end") {
         setActiveTool(null);
       }
-      appendStreamingText(streamingMsgIdRef.current!, msg.content || "");
     });
+    return close;
+  }, [user, setActiveTool]);
 
-    socket.on("structured_card", (msg) => {
-      pushArtifact({
-        kind: "card",
-        id: createArtifactId(),
-        card_type: msg.card_type || "info",
-        data: msg.data || {},
-        created_at: new Date().toISOString(),
-      });
-    });
-
-    socket.on("chart_svg", (msg) => {
-      if (msg.svg) {
+  const renderReply = useCallback(
+    (reply: { content?: string; cards?: { card_type: string; data: Record<string, unknown> }[]; chart_svg?: string | null }) => {
+      if (reply.chart_svg) {
         pushArtifact({
           kind: "chart_svg",
           id: createArtifactId(),
-          svg: msg.svg,
+          svg: reply.chart_svg,
           created_at: new Date().toISOString(),
         });
       }
-    });
+      for (const c of reply.cards || []) {
+        pushArtifact({
+          kind: "card",
+          id: createArtifactId(),
+          card_type: c.card_type,
+          data: c.data || {},
+          created_at: new Date().toISOString(),
+        });
+      }
+      if (reply.content) {
+        pushArtifact({
+          kind: "text",
+          id: createArtifactId(),
+          role: "assistant",
+          content: reply.content,
+          created_at: new Date().toISOString(),
+        });
+      }
+    },
+    [pushArtifact]
+  );
 
-    socket.on("done", () => {
-      const id = streamingMsgIdRef.current;
-      if (id) finalizeStreamingText(id);
-      streamingMsgIdRef.current = null;
-      setStreaming(false);
-    });
+  const showError = useCallback(
+    (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err || "");
+      let friendly = msg;
+      if (/quota|RESOURCE_EXHAUSTED|429/i.test(msg)) {
+        friendly =
+          "I'm out of LLM quota for the moment — Google's free tier limits " +
+          "Gemini calls per day. Please try again later, or upgrade billing.";
+      } else if (!friendly) {
+        friendly = "Something went wrong. Please try again.";
+      }
+      pushArtifact({
+        kind: "text",
+        id: createArtifactId(),
+        role: "assistant",
+        content: `⚠️ ${friendly}`,
+        created_at: new Date().toISOString(),
+      });
+    },
+    [pushArtifact]
+  );
 
-    socket.on("confirmation_required", (msg) => {
-      setConfirmationPreview(msg.preview || "");
-    });
+  const handleSend = useCallback(
+    async (content: string) => {
+      const trimmed = content.trim();
+      if (!trimmed || isStreaming) return;
 
-    socket.on("error", (msg) => {
-      console.error("WebSocket error:", msg.message);
-      setStreaming(false);
+      pushArtifact({
+        kind: "text",
+        id: createArtifactId(),
+        role: "user",
+        content: trimmed,
+        created_at: new Date().toISOString(),
+      });
+      setStreaming(true);
       setActiveTool(null);
-      const id = streamingMsgIdRef.current;
-      if (id) finalizeStreamingText(id);
-      streamingMsgIdRef.current = null;
-    });
 
-    socket.connect();
-    setWs(socket);
+      try {
+        const reply = await chatApi.send({
+          content: trimmed,
+          conversation_id: convId || undefined,
+          language,
+        });
 
-    return () => {
-      socket.disconnect();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, conversationParam]);
+        if (reply.error) {
+          showError(reply.error);
+          return;
+        }
+
+        // Pick up new conversation id and update URL silently
+        if (reply.conversation_id && reply.conversation_id !== convId) {
+          setConvId(reply.conversation_id);
+          setActiveConversationId(reply.conversation_id);
+          if (!conversationParam) {
+            try {
+              window.history.replaceState(
+                window.history.state,
+                "",
+                `/chat?c=${reply.conversation_id}`
+              );
+            } catch {
+              router.replace(`/chat?c=${reply.conversation_id}`);
+            }
+          }
+        }
+
+        if (reply.sensitive) {
+          setConfirmationPreview(reply.confirmation_preview || "Continue?");
+          renderReply(reply);
+          return;
+        }
+
+        renderReply(reply);
+      } catch (err) {
+        showError(err);
+      } finally {
+        setStreaming(false);
+        setActiveTool(null);
+      }
+    },
+    [
+      convId,
+      conversationParam,
+      isStreaming,
+      language,
+      pushArtifact,
+      renderReply,
+      router,
+      setActiveConversationId,
+      setActiveTool,
+      setStreaming,
+      showError,
+    ]
+  );
+
+  const handleConfirmation = useCallback(
+    async (confirmed: boolean) => {
+      const id = convId;
+      setConfirmationPreview(null);
+      if (!id) return;
+      setStreaming(true);
+      try {
+        const reply = await chatApi.confirm(id, confirmed);
+        if (reply.error) {
+          showError(reply.error);
+          return;
+        }
+        renderReply(reply);
+      } catch (err) {
+        showError(err);
+      } finally {
+        setStreaming(false);
+        setActiveTool(null);
+      }
+    },
+    [convId, renderReply, setActiveTool, setStreaming, showError]
+  );
 
   const handleNewChat = () => {
     clearArtifacts();
-    streamingMsgIdRef.current = null;
+    setConvId(null);
     setActiveConversationId(null);
     router.replace("/chat");
-  };
-
-  const handleSend = (content: string) => {
-    if (!ws || !content.trim()) return;
-    pushArtifact({
-      kind: "text",
-      id: createArtifactId(),
-      role: "user",
-      content,
-      created_at: new Date().toISOString(),
-    });
-    ws.sendMessage(content, language);
-  };
-
-  const handleConfirmation = (confirmed: boolean) => {
-    ws?.sendConfirmation(confirmed);
-    setConfirmationPreview(null);
   };
 
   const empty = artifacts.length === 0 && !isStreaming && !activeTool;
 
   return (
-    <div className="absolute inset-0 flex flex-col">
+    <div className="flex flex-col h-[calc(100vh-65px)] md:h-screen">
       <div className="flex items-center justify-between px-4 md:px-8 py-3 border-b border-dashed border-outline/20">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-solar-gold animate-pulse" />
@@ -270,6 +329,13 @@ export default function ChatPage() {
           <ToolActivityIndicator
             toolName={activeTool.name}
             display={activeTool.display}
+          />
+        )}
+
+        {isStreaming && !activeTool && (
+          <ToolActivityIndicator
+            toolName="reasoning"
+            display="Thinking…"
           />
         )}
 

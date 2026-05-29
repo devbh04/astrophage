@@ -11,10 +11,11 @@ from __future__ import annotations
 import json
 import re
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.agent.state import AgentState
+from app.agent._llm_text import llm_text
+from app.agent._llm_factory import make_chat
 from app.config import get_settings
 
 
@@ -66,12 +67,7 @@ def parse_sensitivity_payload(raw: str) -> dict:
 
 
 async def sensitivity_node(state: AgentState) -> dict:
-    settings = get_settings()
-    llm = ChatGoogleGenerativeAI(
-        model=settings.llm_model,
-        google_api_key=settings.google_api_key,
-        temperature=0.0,
-    )
+    llm = make_chat(temperature=0.0)
 
     last_message = ""
     for msg in reversed(state.get("messages", []) or []):
@@ -92,7 +88,7 @@ async def sensitivity_node(state: AgentState) -> dict:
             SystemMessage(content=SENSITIVITY_SYSTEM_PROMPT),
             HumanMessage(content=prompt),
         ])
-        payload = parse_sensitivity_payload(getattr(response, "content", "") or "")
+        payload = parse_sensitivity_payload(llm_text(getattr(response, "content", "")) or "")
     except Exception:
         payload = {"sensitive": False, "category": "none", "preview": ""}
 

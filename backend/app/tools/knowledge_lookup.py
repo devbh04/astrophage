@@ -55,8 +55,16 @@ def _get_google_client() -> Any:
         from google import genai  # type: ignore
 
         settings = get_settings()
-        api_key = settings.google_api_key or os.environ.get("GOOGLE_API_KEY", "")
-        _google_client_singleton = genai.Client(api_key=api_key)
+        if settings.use_vertex:
+            _google_client_singleton = genai.Client(
+                vertexai=True,
+                project=settings.gcp_project,
+                location=settings.gcp_location,
+                credentials=settings.google_credentials(),
+            )
+        else:
+            api_key = settings.google_api_key or os.environ.get("GOOGLE_API_KEY", "")
+            _google_client_singleton = genai.Client(api_key=api_key)
     return _google_client_singleton
 
 

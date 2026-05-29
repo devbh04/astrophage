@@ -1,9 +1,10 @@
 """Router Node — classifies user intent into one of 8 buckets."""
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.agent.state import AgentState
+from app.agent._llm_text import llm_text
+from app.agent._llm_factory import make_chat
 from app.config import get_settings
 
 ROUTER_SYSTEM_PROMPT = """You are an intent classifier for a Vedic astrology AI assistant.
@@ -24,12 +25,7 @@ Respond with ONLY the category name, nothing else."""
 
 async def router_node(state: AgentState) -> dict:
     """Classify the user's intent and set state.intent."""
-    settings = get_settings()
-    llm = ChatGoogleGenerativeAI(
-        model=settings.llm_model,
-        google_api_key=settings.google_api_key,
-        temperature=0,
-    )
+    llm = make_chat(temperature=0)
 
     # Get the last user message
     last_message = ""
@@ -49,7 +45,7 @@ async def router_node(state: AgentState) -> dict:
         HumanMessage(content=last_message),
     ])
 
-    intent = response.content.strip().lower().replace(" ", "_")
+    intent = llm_text(response.content).strip().lower().replace(" ", "_")
 
     # Validate intent is one of our known categories
     valid_intents = {

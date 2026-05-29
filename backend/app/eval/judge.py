@@ -55,17 +55,27 @@ async def _invoke(client, system: str, user: str) -> str:
     if client is None:
         from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore
         from langchain_core.messages import SystemMessage, HumanMessage  # type: ignore
+        from app.agent._llm_text import llm_text  # type: ignore
         settings = get_settings()
-        client = ChatGoogleGenerativeAI(
-            model=settings.llm_model,
-            google_api_key=settings.google_api_key,
-            temperature=0.0,
-        )
+        if settings.use_vertex:
+            client = ChatGoogleGenerativeAI(
+                model=settings.llm_model,
+                credentials=settings.google_credentials(),
+                project=settings.gcp_project,
+                location=settings.gcp_location,
+                temperature=0.0,
+            )
+        else:
+            client = ChatGoogleGenerativeAI(
+                model=settings.llm_model,
+                google_api_key=settings.google_api_key,
+                temperature=0.0,
+            )
         response = await client.ainvoke([
             SystemMessage(content=system),
             HumanMessage(content=user),
         ])
-        return getattr(response, "content", "") or ""
+        return llm_text(getattr(response, "content", "")) or ""
     # If a custom client is supplied, expect it to be a callable
     return await client(system, user)
 

@@ -1,9 +1,10 @@
 """Reasoning Node — the main LLM brain that decides tool calls or drafts responses."""
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage
 
 from app.agent.state import AgentState
+from app.agent._llm_text import llm_text
+from app.agent._llm_factory import make_chat
 from app.config import get_settings
 
 
@@ -53,12 +54,7 @@ GUIDELINES:
 
 
 async def reasoning_node(state: AgentState) -> dict:
-    settings = get_settings()
-    llm = ChatGoogleGenerativeAI(
-        model=settings.llm_model,
-        google_api_key=settings.google_api_key,
-        temperature=0.7,
-    )
+    llm = make_chat(temperature=0.7)
 
     has_chart = bool(state.get("natal_chart"))
     has_dashas = bool(state.get("active_dashas"))
@@ -99,5 +95,5 @@ async def reasoning_node(state: AgentState) -> dict:
     response = await llm.ainvoke(messages)
     return {
         "messages": [response],
-        "draft_response": response.content,
+        "draft_response": llm_text(response.content),
     }
