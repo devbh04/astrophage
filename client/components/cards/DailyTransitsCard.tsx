@@ -7,9 +7,9 @@ interface Props {
 }
 
 const INTENSITY_TONE: Record<string, string> = {
-  high: "bg-rose-500/20 text-rose-300",
-  medium: "bg-amber-500/15 text-amber-300",
-  low: "bg-sky-500/15 text-sky-300",
+  high: "bg-rose-500/10 text-rose-700",
+  medium: "bg-amber-500/5 text-amber-700",
+  low: "bg-sky-500/5 text-sky-700",
 };
 
 export default function DailyTransitsCard({ data }: Props) {
@@ -35,9 +35,9 @@ export default function DailyTransitsCard({ data }: Props) {
             return (
               <div
                 key={h}
-                className={`aspect-square wobbly-border-sm flex items-center justify-center text-[10px] font-headline-md ${
+                className={`aspect-square wobbly-border-sm flex items-center justify-center text-[16px] font-nav-label ${
                   isActive
-                    ? "bg-solar-gold/30 text-solar-gold border-solar-gold/60"
+                    ? "bg-solar-gold/10 text-amber-700 border-solar-gold/60"
                     : "bg-surface-container-low/40 text-outline-variant"
                 }`}
                 title={`House ${h}`}

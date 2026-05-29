@@ -43,7 +43,7 @@ export default function AppLayout({
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="h-[100dvh] bg-background flex overflow-hidden">
       <Sidebar />
       <div
         className={`flex-1 flex flex-col transition-all duration-300 ${
@@ -51,7 +51,7 @@ export default function AppLayout({
         } pb-16 md:pb-0`}
       >
         <Topbar />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto relative flex flex-col min-h-0">{children}</main>
       </div>
     </div>
   );

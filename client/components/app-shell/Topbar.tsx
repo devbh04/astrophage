@@ -56,7 +56,7 @@ export default function Topbar() {
       <div className="flex items-center gap-4">
         <button
           onClick={toggleSidebar}
-          className="md:hidden p-2 hover:bg-surface-container rounded-md text-on-surface-variant"
+          className="hidden p-2 hover:bg-surface-container rounded-md text-on-surface-variant"
         >
           <Menu size={20} />
         </button>

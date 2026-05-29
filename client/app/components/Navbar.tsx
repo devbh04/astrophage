@@ -21,12 +21,13 @@ export default function Navbar() {
   const ctaLabel = isAuthed ? "Open Astrophage" : "Decode Destiny";
 
   return (
-    <nav className="fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-margin-desktop py-6 max-w-full border-b border-dashed border-outline/20 bg-background/80 backdrop-blur-md">
+    <nav className="fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-margin-desktop py-3 max-w-full border-b border-dashed border-outline/20 bg-background/80 backdrop-blur-md">
       <Link
         href="/"
-        className="font-annotation-sm text-display-lg-mobile md:text-headline-md tracking-tighter text-primary"
+        className="flex gap-2 items-center justify-center font-annotation-sm text-display-lg-mobile md:text-headline-md tracking-tighter text-primary"
       >
-        ASTROPHAGE
+        <img src="/logo.png" alt="AstrophageLogo" className="size-12"/>
+        <p className="flex items-center justify-center pt-2 text-[30px]! md:text-[35px]!">ASTROPHAGE</p>
       </Link>
 
       <div className="hidden md:flex space-x-8">

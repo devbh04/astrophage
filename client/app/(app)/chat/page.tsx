@@ -180,7 +180,7 @@ export default function ChatPage() {
   const empty = artifacts.length === 0 && !isStreaming && !activeTool;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-65px)] md:h-screen">
+    <div className="absolute inset-0 flex flex-col">
       <div className="flex items-center justify-between px-4 md:px-8 py-3 border-b border-dashed border-outline/20">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-solar-gold animate-pulse" />

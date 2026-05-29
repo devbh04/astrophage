@@ -98,7 +98,7 @@ export default function ChartPage() {
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto">
+    <div className="p-6 md:p-8 w-full">
       <Tabs defaultValue="natal" className="w-full">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
           <div>
@@ -155,7 +155,7 @@ export default function ChartPage() {
 
         <TabsContent value="dasha">
           {self.computed_dashas ? (
-            <div className="flex justify-start">
+            <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
               <DashaTimelineCard data={self.computed_dashas} />
             </div>
           ) : (
@@ -167,7 +167,7 @@ export default function ChartPage() {
 
         <TabsContent value="transits">
           {transits ? (
-            <div className="flex justify-start">
+            <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
               <DailyTransitsCard data={transits} />
             </div>
           ) : (
@@ -179,7 +179,7 @@ export default function ChartPage() {
 
         <TabsContent value="nakshatra">
           {nak ? (
-            <div className="flex justify-start">
+            <div className="flex justify-start w-full [&>div]:!max-w-none [&>div]:!w-full">
               <NakshatraCard data={nak} />
             </div>
           ) : (
