@@ -63,6 +63,19 @@ async def _emit_card(tool_name: str, result):
         pass
 
 
+async def _emit_tool_event(kind: str, tool_name: str, args=None, ok: bool = True):
+    """Publish ``tool_run_start`` / ``tool_run_end`` so chat.py can collect them."""
+    if adispatch_custom_event is None:
+        return
+    try:
+        await adispatch_custom_event(
+            f"tool_run_{kind}",
+            {"tool": tool_name, "args": args, "ok": ok},
+        )
+    except Exception:
+        pass
+
+
 def _serialize_for_tool_message(value) -> str:
     """Tool messages need a string content. JSON-encode dicts/lists."""
     if isinstance(value, str):
@@ -95,12 +108,14 @@ async def tool_executor_node(state: AgentState) -> dict:
         call_id = tc.get("id", "")
 
         logger.info("tool_executor: calling %s with args=%s", name, args)
+        await _emit_tool_event("start", name, args=args)
 
         if name not in TOOL_REGISTRY:
             err = f"Unknown tool: {name}"
             logger.warning(err)
             tool_outputs.append({"tool": name, "args": args, "result": err, "success": False})
             new_messages.append(ToolMessage(content=err, tool_call_id=call_id, name=name))
+            await _emit_tool_event("end", name, args=args, ok=False)
             continue
 
         fn = TOOL_REGISTRY[name]
@@ -120,12 +135,14 @@ async def tool_executor_node(state: AgentState) -> dict:
                     name=name,
                 )
             )
+            await _emit_tool_event("end", name, args=args, ok=True)
         except Exception as exc:
             logger.exception("tool %s failed", name)
             tool_outputs.append({"tool": name, "args": args, "result": str(exc), "success": False})
             new_messages.append(
                 ToolMessage(content=f"Error: {exc}", tool_call_id=call_id, name=name)
             )
+            await _emit_tool_event("end", name, args=args, ok=False)
 
     update: dict = {
         "tool_outputs": tool_outputs,

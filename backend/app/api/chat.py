@@ -129,6 +129,8 @@ async def _run_turn(
             name = event.get("name")
 
             if etype == "on_tool_start":
+                # LangChain-native tool runs (not currently used by our manual
+                # TOOL_REGISTRY dispatcher, but kept for forwards-compat).
                 logger.info("→ tool_start: %s", name)
                 bus.publish(user_id, {"type": "tool_start", "tool_name": name or "tool"})
                 tool_runs.append({
@@ -142,6 +144,27 @@ async def _run_turn(
                 for run in reversed(tool_runs):
                     if run.get("tool") == name and run.get("status") == "running":
                         run["status"] = "ok"
+                        break
+            elif etype == "on_custom_event" and name == "tool_run_start":
+                # Emitted by tool_executor_node before each registry call.
+                payload = data if isinstance(data, dict) else {}
+                tool_name = payload.get("tool") or "tool"
+                logger.info("→ tool_run_start: %s", tool_name)
+                bus.publish(user_id, {"type": "tool_start", "tool_name": tool_name})
+                tool_runs.append({
+                    "tool": tool_name,
+                    "args": payload.get("args"),
+                    "status": "running",
+                })
+            elif etype == "on_custom_event" and name == "tool_run_end":
+                payload = data if isinstance(data, dict) else {}
+                tool_name = payload.get("tool") or "tool"
+                ok = bool(payload.get("ok", True))
+                logger.info("← tool_run_end:   %s (ok=%s)", tool_name, ok)
+                bus.publish(user_id, {"type": "tool_end", "tool_name": tool_name})
+                for run in reversed(tool_runs):
+                    if run.get("tool") == tool_name and run.get("status") == "running":
+                        run["status"] = "ok" if ok else "error"
                         break
             elif etype == "on_custom_event" and name == "chart_svg":
                 if isinstance(data, str) and data.strip():
