@@ -14,11 +14,18 @@ export interface ChatCard {
   data: Record<string, unknown>;
 }
 
+export interface ChatToolRun {
+  tool: string;
+  args?: unknown;
+  status?: "ok" | "running" | "error";
+}
+
 export interface ChatReply {
   conversation_id: string;
   content: string;
   cards: ChatCard[];
   chart_svg: string | null;
+  tool_runs?: ChatToolRun[];
   sensitive?: boolean;
   confirmation_preview?: string | null;
   error?: string | null;

@@ -4,10 +4,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAppStore, createArtifactId } from "@/lib/store";
 import { conversationsApi } from "@/lib/api";
-import { chatApi, connectEventsSocket } from "@/lib/chat";
+import { chatApi, connectEventsSocket, type ChatToolRun } from "@/lib/chat";
 import ChatMessage from "@/components/chat/ChatMessage";
 import ChatInput from "@/components/chat/ChatInput";
 import ToolActivityIndicator from "@/components/chat/ToolActivityIndicator";
+import ToolBadgeStrip from "@/components/chat/ToolBadgeStrip";
 import SensitiveReadingDialog from "@/components/chat/SensitiveReadingDialog";
 import StructuredCard from "@/components/cards/StructuredCard";
 import ChartSvgCard from "@/components/cards/ChartSvgCard";
@@ -80,7 +81,12 @@ export default function ChatPage() {
   }, [user, setActiveTool]);
 
   const renderReply = useCallback(
-    (reply: { content?: string; cards?: { card_type: string; data: Record<string, unknown> }[]; chart_svg?: string | null }) => {
+    (reply: {
+      content?: string;
+      cards?: { card_type: string; data: Record<string, unknown> }[];
+      chart_svg?: string | null;
+      tool_runs?: ChatToolRun[];
+    }) => {
       if (reply.chart_svg) {
         pushArtifact({
           kind: "chart_svg",
@@ -104,6 +110,9 @@ export default function ChatPage() {
           id: createArtifactId(),
           role: "assistant",
           content: reply.content,
+          toolRuns: reply.tool_runs && reply.tool_runs.length > 0
+            ? reply.tool_runs
+            : undefined,
           created_at: new Date().toISOString(),
         });
       }
@@ -294,12 +303,18 @@ export default function ChatPage() {
         {artifacts.map((a) => {
           if (a.kind === "text") {
             return (
-              <ChatMessage
-                key={a.id}
-                role={a.role}
-                content={a.content}
-                isStreaming={!!a.streaming}
-              />
+              <div key={a.id} className="flex flex-col">
+                <ChatMessage
+                  role={a.role}
+                  content={a.content}
+                  isStreaming={!!a.streaming}
+                />
+                {a.role === "assistant" && a.toolRuns && a.toolRuns.length > 0 && (
+                  <div className="flex justify-start mt-1 ml-1">
+                    <ToolBadgeStrip runs={a.toolRuns} />
+                  </div>
+                )}
+              </div>
             );
           }
           if (a.kind === "card") {

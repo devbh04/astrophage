@@ -13,19 +13,44 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, setUser, setLanguage, sidebarOpen } = useAppStore();
+  const user = useAppStore((s) => s.user);
+  const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fire once on mount. Do NOT depend on router / setters from Zustand —
+  // those are recreated each render and would loop the effect.
   useEffect(() => {
+    let cancelled = false;
     authApi
       .me()
       .then((me) => {
-        setUser(me);
-        if (me.default_language) setLanguage(me.default_language);
+        if (cancelled) return;
+        useAppStore.getState().setUser(me);
+        if (me.default_language) {
+          useAppStore.getState().setLanguage(me.default_language);
+        }
       })
-      .catch(() => router.push("/login"))
-      .finally(() => setLoading(false));
-  }, [router, setUser, setLanguage]);
+      .catch((err) => {
+        if (cancelled) return;
+        const msg =
+          err instanceof Error ? err.message : "Failed to verify session";
+        // 401 → redirect to login. Anything else → show the error so we
+        // don't leave the user staring at "Aligning the stars…" forever.
+        if (/401|not authenticated|unauthor/i.test(msg)) {
+          router.replace("/login");
+        } else {
+          setError(msg);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) {
     return (
@@ -34,6 +59,28 @@ export default function AppLayout({
           <div className="w-3 h-3 rounded-full bg-solar-gold animate-pulse mx-auto mb-4" />
           <p className="font-annotation-sm text-solar-gold text-lg">
             Aligning the stars...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <div className="text-center max-w-md">
+          <p className="font-annotation-sm text-solar-gold text-xl mb-3">
+            Couldn&apos;t reach the cosmos
+          </p>
+          <p className="font-body-md text-sm text-on-surface-variant mb-6">
+            {error}
+          </p>
+          <p className="font-body-md text-xs text-outline-variant">
+            Make sure the backend is running at{" "}
+            <code className="font-mono">
+              {process.env.NEXT_PUBLIC_API_URL || "http://localhost:7860"}
+            </code>
+            , then refresh the page.
           </p>
         </div>
       </div>
@@ -51,7 +98,9 @@ export default function AppLayout({
         } pb-16 md:pb-0`}
       >
         <Topbar />
-        <main className="flex-1 overflow-y-auto relative flex flex-col min-h-0">{children}</main>
+        <main className="flex-1 overflow-y-auto relative flex flex-col min-h-0">
+          {children}
+        </main>
       </div>
     </div>
   );

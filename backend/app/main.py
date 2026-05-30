@@ -30,6 +30,20 @@ from app.api.chat import router as chat_router
 from app.agent._event_bus import bus
 from app.db.queries import get_user_by_id
 
+
+# ── Logging ────────────────────────────────────────────────────
+# uvicorn's default config doesn't show `app.*` INFO lines. Wire one up
+# here so logger.info() calls inside the chat / agent modules print
+# to the same console.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Quiet down very chatty libraries
+for noisy in ("httpx", "httpcore", "google_genai", "supabase", "hpack"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 

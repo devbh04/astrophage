@@ -1,18 +1,16 @@
 """
-LangGraph graph assembly — Phase 4 full topology.
+LangGraph graph assembly — slim, fast topology.
 
-Graph structure:
+Old graph: language_detector → router → reasoning ⟷ tool_executor → sensitivity → editor → response
+That made 4-5 LLM calls per turn (15-30s for "hi"). Editor pass also
+introduced an interrupt that swallowed the reasoning output.
 
-    language_detector
-        ↓
-      router
-        ↓
-    reasoning ⟷ tool_executor
-        ↓ (no_tool)
-    sensitivity
-        ↓
-    sensitive? ── yes → response (interrupt for HiTL) ── confirm? → editor → response → END
-              └ no  → editor → response → END
+New graph: reasoning ⟷ tool_executor → response
+- 1 LLM call when the model has a final answer
+- 2 LLM calls when tools are needed (one to plan, one to read tool output)
+- No interrupt, no fake editor pass
+- Sensitive-topic gating still works — the response node checks for
+  ``sensitive_flag`` and the chat HTTP handler honors it
 """
 
 from __future__ import annotations
@@ -21,13 +19,9 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.agent.state import AgentState
-from app.agent.nodes.router import router_node
 from app.agent.nodes.reasoning import reasoning_node
 from app.agent.nodes.tool_executor import tool_executor_node
 from app.agent.nodes.response import response_node
-from app.agent.nodes.language_detector import language_detector_node
-from app.agent.nodes.sensitivity import sensitivity_node
-from app.agent.nodes.editor import editor_node
 
 
 def needs_tool(state: AgentState) -> str:
@@ -41,50 +35,26 @@ def needs_tool(state: AgentState) -> str:
     return "no_tool"
 
 
-def is_sensitive(state: AgentState) -> str:
-    """Branch: did the sensitivity classifier flag the message?"""
-    if state.get("sensitive_flag") and not state.get("confirmed"):
-        return "sensitive"
-    return "safe"
-
-
-def build_graph() -> StateGraph:
-    """Build and compile the Phase 4 agent graph with HiTL interrupt."""
+def build_graph():
     graph = StateGraph(AgentState)
 
-    graph.add_node("language_detector", language_detector_node)
-    graph.add_node("router", router_node)
     graph.add_node("reasoning", reasoning_node)
     graph.add_node("tool_executor", tool_executor_node)
-    graph.add_node("sensitivity", sensitivity_node)
-    graph.add_node("editor", editor_node)
     graph.add_node("response", response_node)
 
-    graph.set_entry_point("language_detector")
-    graph.add_edge("language_detector", "router")
-    graph.add_edge("router", "reasoning")
+    graph.set_entry_point("reasoning")
     graph.add_conditional_edges(
         "reasoning",
         needs_tool,
-        {"tool": "tool_executor", "no_tool": "sensitivity"},
+        {"tool": "tool_executor", "no_tool": "response"},
     )
     graph.add_edge("tool_executor", "reasoning")
-    graph.add_conditional_edges(
-        "sensitivity",
-        is_sensitive,
-        {"sensitive": "response", "safe": "editor"},
-    )
-    graph.add_edge("editor", "response")
     graph.add_edge("response", END)
 
-    return graph.compile(
-        checkpointer=MemorySaver(),
-        interrupt_before=["editor"],
-    )
+    return graph.compile(checkpointer=MemorySaver())
 
 
-# Singleton compiled graph
 agent_graph = build_graph()
 
 
-__all__ = ["agent_graph", "build_graph", "needs_tool", "is_sensitive"]
+__all__ = ["agent_graph", "build_graph", "needs_tool"]

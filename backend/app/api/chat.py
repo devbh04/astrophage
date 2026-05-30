@@ -13,6 +13,7 @@ the HTTP request is in flight.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -44,11 +45,18 @@ class ChatCard(BaseModel):
     data: dict[str, Any]
 
 
+class ChatToolRun(BaseModel):
+    tool: str
+    args: Any | None = None
+    status: str = "ok"  # "ok" | "running" | "error"
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     content: str
     cards: list[ChatCard] = []
     chart_svg: str | None = None
+    tool_runs: list[ChatToolRun] = []
     sensitive: bool = False
     confirmation_preview: str | None = None
     error: str | None = None
@@ -105,11 +113,14 @@ async def _run_turn(
 ) -> dict:
     """
     Invoke the agent graph. Publish tool_start/tool_end to the event bus
-    keyed by user_id. Return the final draft + structured artifacts.
+    keyed by user_id. Return the final draft + structured artifacts +
+    the list of tools that were invoked during the turn.
     """
     final_text = ""
     cards: list[dict[str, Any]] = []
     chart_svg: str | None = None
+    tool_runs: list[dict[str, Any]] = []
+    started = time.monotonic()
 
     try:
         async for event in agent_graph.astream_events(initial, config=config, version="v2"):
@@ -117,12 +128,21 @@ async def _run_turn(
             data = event.get("data") or {}
             name = event.get("name")
 
-            logger.info("GRAPH EVENT: type=%s name=%s", etype, name)
-
             if etype == "on_tool_start":
+                logger.info("→ tool_start: %s", name)
                 bus.publish(user_id, {"type": "tool_start", "tool_name": name or "tool"})
+                tool_runs.append({
+                    "tool": name or "tool",
+                    "args": data.get("input") if isinstance(data, dict) else None,
+                    "status": "running",
+                })
             elif etype == "on_tool_end":
+                logger.info("← tool_end:   %s", name)
                 bus.publish(user_id, {"type": "tool_end", "tool_name": name or "tool"})
+                for run in reversed(tool_runs):
+                    if run.get("tool") == name and run.get("status") == "running":
+                        run["status"] = "ok"
+                        break
             elif etype == "on_custom_event" and name == "chart_svg":
                 if isinstance(data, str) and data.strip():
                     chart_svg = data
@@ -143,19 +163,19 @@ async def _run_turn(
             "final_text": "",
             "cards": cards,
             "chart_svg": chart_svg,
+            "tool_runs": tool_runs,
             "error": str(exc),
             "sensitive": False,
             "preview": "",
         }
 
-    # Fallback: if we never caught on_chain_end for "response",
-    # pull draft_response directly from the graph state.
+    # Fallback: if for any reason on_chain_end for "response" wasn't seen,
+    # pull draft_response straight from the saved graph state.
     if not final_text:
         try:
             snapshot = agent_graph.get_state(config)
             sv = getattr(snapshot, "values", {}) or {}
             final_text = sv.get("draft_response", "") or ""
-            logger.info("Fallback draft_response from state: %s", final_text[:120] if final_text else "(empty)")
         except Exception:
             pass
 
@@ -167,10 +187,21 @@ async def _run_turn(
     )
     preview = snapshot_values.get("confirmation_preview") or ""
 
+    elapsed = time.monotonic() - started
+    logger.info(
+        "turn finished in %.1fs · tools=%d cards=%d svg=%s text=%dch",
+        elapsed,
+        len(tool_runs),
+        len(cards),
+        bool(chart_svg),
+        len(final_text or ""),
+    )
+
     return {
         "final_text": final_text,
         "cards": cards,
         "chart_svg": chart_svg,
+        "tool_runs": tool_runs,
         "error": None,
         "sensitive": sensitive,
         "preview": preview,
@@ -189,6 +220,7 @@ async def send_message(
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty message")
 
+    logger.info("chat ▷ user=%s msg=%r", user.get("email", user["id"]), content[:80])
     language = body.language or user.get("default_language") or "en"
     natal_chart, active_dashas, self_profile_id = await _load_self_profile(user["id"])
 
@@ -229,6 +261,7 @@ async def send_message(
             content="",
             cards=[ChatCard(**c) for c in result["cards"]],
             chart_svg=result["chart_svg"],
+            tool_runs=[ChatToolRun(**r) for r in result["tool_runs"]],
             error=result["error"],
         )
 
@@ -238,6 +271,7 @@ async def send_message(
             content="",
             cards=[ChatCard(**c) for c in result["cards"]],
             chart_svg=result["chart_svg"],
+            tool_runs=[ChatToolRun(**r) for r in result["tool_runs"]],
             sensitive=True,
             confirmation_preview=result["preview"] or "Continue?",
         )
@@ -250,6 +284,7 @@ async def send_message(
                 role="assistant",
                 content=final_text,
                 language=language,
+                tool_calls={"runs": result["tool_runs"]} if result["tool_runs"] else None,
             )
         except Exception as exc:
             logger.warning("Failed to persist assistant message: %s", exc)
@@ -259,6 +294,7 @@ async def send_message(
         content=final_text,
         cards=[ChatCard(**c) for c in result["cards"]],
         chart_svg=result["chart_svg"],
+        tool_runs=[ChatToolRun(**r) for r in result["tool_runs"]],
     )
 
 
@@ -310,6 +346,7 @@ async def confirm(
             content="",
             cards=[ChatCard(**c) for c in result["cards"]],
             chart_svg=result["chart_svg"],
+            tool_runs=[ChatToolRun(**r) for r in result["tool_runs"]],
             error=result["error"],
         )
 
@@ -321,6 +358,7 @@ async def confirm(
                 role="assistant",
                 content=final_text,
                 language=language,
+                tool_calls={"runs": result["tool_runs"]} if result["tool_runs"] else None,
             )
         except Exception:
             pass
@@ -330,4 +368,5 @@ async def confirm(
         content=final_text,
         cards=[ChatCard(**c) for c in result["cards"]],
         chart_svg=result["chart_svg"],
+        tool_runs=[ChatToolRun(**r) for r in result["tool_runs"]],
     )

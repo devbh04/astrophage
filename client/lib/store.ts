@@ -9,6 +9,12 @@ import type { User, BirthProfile, Conversation, Message } from "./api";
  * A single artefact rendered in the chat stream — either text from the
  * assistant, an SVG chart, or a structured card emitted by a tool.
  */
+export interface ToolRun {
+  tool: string;
+  args?: unknown;
+  status?: "ok" | "running" | "error";
+}
+
 export type ChatArtifact =
   | {
       kind: "text";
@@ -16,6 +22,7 @@ export type ChatArtifact =
       role: "user" | "assistant";
       content: string;
       streaming?: boolean;
+      toolRuns?: ToolRun[];
       created_at: string;
     }
   | {
@@ -125,15 +132,22 @@ export const useAppStore = create<AppState>((set) => ({
     })),
   hydrateFromMessages: (messages) =>
     set({
-      artifacts: messages.map((m) => ({
-        kind: "text" as const,
-        id: m.id || newId(),
-        role: (m.role === "assistant" ? "assistant" : "user") as
-          | "user"
-          | "assistant",
-        content: m.content,
-        created_at: m.created_at || new Date().toISOString(),
-      })),
+      artifacts: messages.map((m) => {
+        const tool_calls = (m as { tool_calls?: { runs?: ToolRun[] } | null })
+          .tool_calls;
+        const runs =
+          tool_calls && Array.isArray(tool_calls.runs) ? tool_calls.runs : [];
+        return {
+          kind: "text" as const,
+          id: m.id || newId(),
+          role: (m.role === "assistant" ? "assistant" : "user") as
+            | "user"
+            | "assistant",
+          content: m.content,
+          toolRuns: runs.length > 0 ? runs : undefined,
+          created_at: m.created_at || new Date().toISOString(),
+        };
+      }),
     }),
 
   isStreaming: false,
