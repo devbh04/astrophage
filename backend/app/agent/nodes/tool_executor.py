@@ -136,9 +136,19 @@ async def tool_executor_node(state: AgentState) -> dict:
             await _emit_card(name, result)
             if name == "render_chart_svg" and isinstance(result, str):
                 chart_svg_to_set = result
+                # Important: substitute a short ack for the LLM-facing tool
+                # message. If the SVG XML is fed back into the next reasoning
+                # turn, the LLM will paste it into its prose reply and the
+                # user will see raw ``<svg>`` markup in the chat bubble.
+                tool_message_content: Any = (
+                    "Chart rendered and shown to the user as a visual card. "
+                    "Do not paste the SVG. Just acknowledge briefly."
+                )
+            else:
+                tool_message_content = result
             new_messages.append(
                 ToolMessage(
-                    content=_serialize_for_tool_message(result),
+                    content=_serialize_for_tool_message(tool_message_content),
                     tool_call_id=call_id,
                     name=name,
                 )

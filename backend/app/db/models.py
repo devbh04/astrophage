@@ -91,6 +91,10 @@ class UserResponse(BaseModel):
     name: str
     default_language: str
     chart_format: str
+    residence_place_name: Optional[str] = None
+    residence_lat: Optional[float] = None
+    residence_lng: Optional[float] = None
+    residence_timezone: Optional[str] = None
 
 
 class ProfileResponse(BaseModel):

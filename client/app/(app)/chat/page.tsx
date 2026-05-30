@@ -75,9 +75,13 @@ export default function ChatPage() {
           name: e.tool_name,
           display: `Running ${e.tool_name.replace(/_/g, " ")}…`,
         });
-      } else if (e.type === "tool_end") {
-        setActiveTool(null);
       }
+      // Intentionally do NOT clear on tool_end: the LLM may run another
+      // reasoning pass before the next tool, and clearing here causes the
+      // generic "Consulting the stars" indicator to flash back into view
+      // for a split second between calls. Leave the last tool pinned —
+      // either the next tool_start replaces it, or the HTTP request's
+      // finally block clears it when the whole turn completes.
     });
     return unsubscribe;
   }, [user, setActiveTool]);

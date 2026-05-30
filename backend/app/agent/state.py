@@ -34,6 +34,12 @@ class AgentState(TypedDict, total=False):
     birth_details: BirthDetails
     natal_chart: dict       # full computed chart from birth_profiles.computed_chart
     active_dashas: dict     # from birth_profiles.computed_dashas
+    self_birth: dict        # full birth details for the user's self profile
+    residence: dict         # current residence — place_name/lat/lng/timezone
+    family_summary: list    # [{id, name, relationship, has_chart, ...}, …]
+    user_name: str          # display name from users.name
+    chart_format: str       # 'south_indian' or 'north_indian'
+    now_ist: dict           # {iso, date, time, weekday, timezone='Asia/Kolkata'}
 
     # Agent reasoning
     intent: str             # classified by router: chart_request, daily_horoscope, etc.

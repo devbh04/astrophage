@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { panchangApi, profilesApi, type PanchangData } from "@/lib/api";
+import { panchangApi, type PanchangData } from "@/lib/api";
+import { useAppStore } from "@/lib/store";
 import PanchangCard from "@/components/cards/PanchangCard";
 import MuhurtaDialog from "@/components/calendar/MuhurtaDialog";
 
@@ -14,6 +15,7 @@ const fmtDate = (d: Date) => {
 };
 
 export default function CalendarPage() {
+  const { user, profiles } = useAppStore();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -28,23 +30,32 @@ export default function CalendarPage() {
     place: string;
   }>({ lat: 19.076, lng: 72.8777, timezone: "Asia/Kolkata", place: "Mumbai" });
 
-  // Default coords come from the user's self profile if available
+  // Place-of-residence first; fall back to the user's birth place only when
+  // residence is not set; final fallback is the Mumbai default above.
   useEffect(() => {
-    profilesApi
-      .list()
-      .then((profiles) => {
-        const self = profiles.find((p) => p.relationship === "self");
-        if (self) {
-          setCoords({
-            lat: self.lat,
-            lng: self.lng,
-            timezone: self.timezone,
-            place: self.place_name || "—",
-          });
-        }
-      })
-      .catch(() => { });
-  }, []);
+    if (
+      user?.residence_lat != null &&
+      user?.residence_lng != null &&
+      user?.residence_timezone
+    ) {
+      setCoords({
+        lat: user.residence_lat,
+        lng: user.residence_lng,
+        timezone: user.residence_timezone,
+        place: user.residence_place_name || "—",
+      });
+      return;
+    }
+    const self = profiles.find((p) => p.relationship === "self");
+    if (self) {
+      setCoords({
+        lat: self.lat,
+        lng: self.lng,
+        timezone: self.timezone,
+        place: self.place_name || "—",
+      });
+    }
+  }, [user, profiles]);
 
   const fetchPanchang = async (date: string) => {
     setLoading(true);
@@ -103,7 +114,7 @@ export default function CalendarPage() {
   });
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto">
+    <div className="p-6 md:p-8 w-full">
       <div className="flex flex-col mb-6 gap-4 sm:gap-8">
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">

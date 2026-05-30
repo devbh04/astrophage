@@ -12,6 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import SelfBirthDetailsCard from "@/components/settings/SelfBirthDetailsCard";
+import ResidenceCard from "@/components/settings/ResidenceCard";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -148,6 +150,10 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        <SelfBirthDetailsCard />
+
+        <ResidenceCard />
 
         <section>
           <button

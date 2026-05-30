@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_core.messages import HumanMessage
@@ -23,10 +25,12 @@ from pydantic import BaseModel
 from app.auth.dependencies import get_current_user
 from app.agent.graph import agent_graph
 from app.agent._event_bus import bus
+from app.agent._user_context import set_request_context
 from app.db.queries import (
     create_conversation,
     create_message,
     get_self_profile,
+    get_profiles_by_user,
 )
 
 
@@ -69,18 +73,79 @@ class ConfirmRequest(BaseModel):
 # ── Helpers ─────────────────────────────────────────────────────
 
 
+IST = ZoneInfo("Asia/Kolkata")
+
+
 async def _load_self_profile(user_id: str):
     try:
         profile = await get_self_profile(user_id)
     except Exception:
         profile = None
     if not profile:
-        return None, None, None
+        return None, None, None, None
     return (
         profile.get("computed_chart"),
         profile.get("computed_dashas"),
         profile.get("id"),
+        profile,
     )
+
+
+async def _load_family_summary(user_id: str, self_profile_id: str | None) -> list[dict]:
+    """List of {id, name, relationship, has_chart} for every saved profile (excluding self)."""
+    try:
+        rows = await get_profiles_by_user(user_id)
+    except Exception:
+        return []
+    out: list[dict] = []
+    for row in rows or []:
+        if self_profile_id and row.get("id") == self_profile_id:
+            continue
+        out.append({
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "relationship": row.get("relationship"),
+            "has_chart": bool(row.get("computed_chart")),
+            "birth_date": row.get("birth_date"),
+            "place_name": row.get("place_name"),
+        })
+    return out
+
+
+def _ist_now_payload() -> dict:
+    now = datetime.now(IST)
+    return {
+        "iso": now.isoformat(),
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M:%S"),
+        "weekday": now.strftime("%A"),
+        "timezone": "Asia/Kolkata",
+    }
+
+
+def _user_birth_payload(self_profile: dict | None) -> dict | None:
+    if not self_profile:
+        return None
+    return {
+        "name": self_profile.get("name"),
+        "relationship": self_profile.get("relationship"),
+        "birth_date": self_profile.get("birth_date"),
+        "birth_time": self_profile.get("birth_time"),
+        "place_name": self_profile.get("place_name"),
+        "lat": self_profile.get("lat"),
+        "lng": self_profile.get("lng"),
+        "timezone": self_profile.get("timezone"),
+    }
+
+
+def _user_residence_payload(user: dict) -> dict | None:
+    place = user.get("residence_place_name")
+    lat = user.get("residence_lat")
+    lng = user.get("residence_lng")
+    tz = user.get("residence_timezone")
+    if not (place and lat is not None and lng is not None and tz):
+        return None
+    return {"place_name": place, "lat": lat, "lng": lng, "timezone": tz}
 
 
 def _initial_state(
@@ -89,6 +154,9 @@ def _initial_state(
     language: str,
     natal_chart,
     active_dashas,
+    self_birth: dict | None,
+    residence: dict | None,
+    family_summary: list[dict],
 ) -> dict:
     return {
         "messages": [HumanMessage(content=content)],
@@ -97,6 +165,12 @@ def _initial_state(
         "language": language or user.get("default_language") or "en",
         "natal_chart": natal_chart or {},
         "active_dashas": active_dashas or {},
+        "self_birth": self_birth or {},
+        "residence": residence or {},
+        "family_summary": family_summary or [],
+        "user_name": user.get("name") or "",
+        "chart_format": user.get("chart_format") or "south_indian",
+        "now_ist": _ist_now_payload(),
         "intent": "",
         "tool_outputs": [],
         "sensitive_flag": False,
@@ -245,7 +319,10 @@ async def send_message(
 
     logger.info("chat ▷ user=%s msg=%r", user.get("email", user["id"]), content[:80])
     language = body.language or user.get("default_language") or "en"
-    natal_chart, active_dashas, self_profile_id = await _load_self_profile(user["id"])
+    natal_chart, active_dashas, self_profile_id, self_profile = await _load_self_profile(user["id"])
+    family_summary = await _load_family_summary(user["id"], self_profile_id)
+    self_birth = _user_birth_payload(self_profile)
+    residence = _user_residence_payload(user)
 
     # Lazy conversation creation
     conversation_id = body.conversation_id
@@ -274,9 +351,17 @@ async def send_message(
 
     thread_id = f"{user['id']}:{conversation_id}"
     config = {"configurable": {"thread_id": thread_id}}
-    initial = _initial_state(user, content, language, natal_chart, active_dashas)
+    initial = _initial_state(
+        user, content, language, natal_chart, active_dashas,
+        self_birth=self_birth, residence=residence, family_summary=family_summary,
+    )
 
-    result = await _run_turn(user_id=user["id"], initial=initial, config=config)
+    with set_request_context(
+        user_id=user["id"],
+        natal_chart=natal_chart,
+        chart_format=user.get("chart_format") or "south_indian",
+    ):
+        result = await _run_turn(user_id=user["id"], initial=initial, config=config)
 
     if result["error"]:
         return ChatResponse(
@@ -373,7 +458,12 @@ async def confirm(
         agent_graph.update_state(config, {"confirmed": True})
         resume_input = None
 
-    result = await _run_turn(user_id=user["id"], initial=resume_input, config=config)
+    with set_request_context(
+        user_id=user["id"],
+        natal_chart=None,  # set on resume from snapshot if needed
+        chart_format=user.get("chart_format") or "south_indian",
+    ):
+        result = await _run_turn(user_id=user["id"], initial=resume_input, config=config)
 
     if result["error"]:
         return ChatResponse(

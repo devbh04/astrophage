@@ -42,6 +42,10 @@ export interface User {
   name: string;
   default_language: string;
   chart_format: string;
+  residence_place_name?: string | null;
+  residence_lat?: number | null;
+  residence_lng?: number | null;
+  residence_timezone?: string | null;
 }
 
 export interface RegisterData {
@@ -60,6 +64,10 @@ export interface UpdatePreferences {
   name?: string;
   default_language?: string;
   chart_format?: string;
+  residence_place_name?: string | null;
+  residence_lat?: number | null;
+  residence_lng?: number | null;
+  residence_timezone?: string | null;
 }
 
 export const authApi = {

@@ -15,6 +15,10 @@ class UpdatePreferencesBody(BaseModel):
     name: str | None = None
     default_language: str | None = None
     chart_format: str | None = None
+    residence_place_name: str | None = None
+    residence_lat: float | None = None
+    residence_lng: float | None = None
+    residence_timezone: str | None = None
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -37,6 +41,10 @@ def _user_response(user: dict) -> UserResponse:
         name=user["name"],
         default_language=user.get("default_language", "en"),
         chart_format=user.get("chart_format", "south_indian"),
+        residence_place_name=user.get("residence_place_name"),
+        residence_lat=user.get("residence_lat"),
+        residence_lng=user.get("residence_lng"),
+        residence_timezone=user.get("residence_timezone"),
     )
 
 

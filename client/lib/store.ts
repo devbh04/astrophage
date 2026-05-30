@@ -1,8 +1,15 @@
 /**
  * Zustand store for global application state.
+ *
+ * `user`, `profiles`, `activeProfileId`, and `language` are persisted to
+ * ``localStorage`` so the chat can include them in every request without a
+ * round-trip — critical for offline-friendliness and instant boot. Sensitive
+ * server-issued state (auth cookie) is still HTTP-only, so this only mirrors
+ * non-secret UI/profile data.
  */
 
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { User, BirthProfile, Conversation, Message } from "./api";
 
 /**
@@ -92,7 +99,9 @@ const newId = () =>
     ? crypto.randomUUID()
     : `art-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
   user: null,
   setUser: (user) => set({ user }),
 
@@ -197,6 +206,19 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-}));
+}),
+    {
+      name: "astrophage-store",
+      // Persist non-secret data only. Auth itself is the HTTP-only cookie.
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        user: state.user,
+        profiles: state.profiles,
+        activeProfile: state.activeProfile,
+        language: state.language,
+      }),
+    }
+  )
+);
 
 export { newId as createArtifactId };

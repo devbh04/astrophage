@@ -1,0 +1,82 @@
+"""
+ContextVar-based binding between the active HTTP request and any tools the
+agent may call inside it.
+
+Why: LangChain tool functions don't get the request's ``user_id`` as an
+argument — the LLM never sees user identifiers. We still need
+``get_family_profile`` (and any future user-scoped tool) to look up rows
+that belong to *only* the user who's chatting. A ``ContextVar`` lets us
+stash the id in the request handler and read it from anywhere downstream
+without threading it through dozens of layers.
+
+We also stash the user's preloaded ``natal_chart`` and ``chart_format`` so
+chart-consuming tools can fall back to them when the LLM passes a partial
+or empty ``natal_chart`` arg (which it does, because the system prompt
+only shows a 3-line summary, not the full chart).
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Iterator
+
+_current_user_id: ContextVar[str | None] = ContextVar(
+    "astrophage_user_id", default=None
+)
+_current_natal_chart: ContextVar[dict | None] = ContextVar(
+    "astrophage_natal_chart", default=None
+)
+_current_chart_format: ContextVar[str] = ContextVar(
+    "astrophage_chart_format", default="south_indian"
+)
+
+
+def get_current_user_id() -> str | None:
+    return _current_user_id.get()
+
+
+def get_current_natal_chart() -> dict | None:
+    return _current_natal_chart.get()
+
+
+def get_current_chart_format() -> str:
+    return _current_chart_format.get()
+
+
+@contextmanager
+def set_current_user_id(user_id: str | None) -> Iterator[None]:
+    """Bind the active user for the duration of the ``with`` block."""
+    token = _current_user_id.set(user_id)
+    try:
+        yield
+    finally:
+        _current_user_id.reset(token)
+
+
+@contextmanager
+def set_request_context(
+    *,
+    user_id: str | None,
+    natal_chart: dict | None = None,
+    chart_format: str = "south_indian",
+) -> Iterator[None]:
+    """Bind everything tools may need from the request, atomically."""
+    t1 = _current_user_id.set(user_id)
+    t2 = _current_natal_chart.set(natal_chart or None)
+    t3 = _current_chart_format.set(chart_format or "south_indian")
+    try:
+        yield
+    finally:
+        _current_chart_format.reset(t3)
+        _current_natal_chart.reset(t2)
+        _current_user_id.reset(t1)
+
+
+__all__ = [
+    "get_current_user_id",
+    "get_current_natal_chart",
+    "get_current_chart_format",
+    "set_current_user_id",
+    "set_request_context",
+]
