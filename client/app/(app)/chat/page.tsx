@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAppStore, createArtifactId } from "@/lib/store";
 import { conversationsApi } from "@/lib/api";
-import { chatApi, connectEventsSocket, type ChatToolRun } from "@/lib/chat";
+import { chatApi, type ChatToolRun } from "@/lib/chat";
+import { subscribeEvents } from "@/lib/events_singleton";
 import ChatMessage from "@/components/chat/ChatMessage";
 import ChatInput from "@/components/chat/ChatInput";
 import ToolActivityIndicator from "@/components/chat/ToolActivityIndicator";
@@ -64,10 +65,11 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationParam]);
 
-  // Live tool-event channel
+  // Live tool-event channel — single shared WS across the whole page.
   useEffect(() => {
     if (!user) return;
-    const close = connectEventsSocket((e) => {
+    const unsubscribe = subscribeEvents((e) => {
+      console.debug("[events] received:", e);
       if (e.type === "tool_start") {
         setActiveTool({
           name: e.tool_name,
@@ -77,7 +79,7 @@ export default function ChatPage() {
         setActiveTool(null);
       }
     });
-    return close;
+    return unsubscribe;
   }, [user, setActiveTool]);
 
   const renderReply = useCallback(
@@ -162,6 +164,16 @@ export default function ChatPage() {
           content: trimmed,
           conversation_id: convId || undefined,
           language,
+        });
+
+        console.debug("[chat] reply:", {
+          conversation_id: reply.conversation_id,
+          content_len: (reply.content || "").length,
+          cards: (reply.cards || []).length,
+          chart_svg: !!reply.chart_svg,
+          tool_runs: reply.tool_runs?.map((r) => `${r.tool}(${r.status})`),
+          sensitive: reply.sensitive,
+          error: reply.error,
         });
 
         if (reply.error) {

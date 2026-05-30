@@ -77,11 +77,12 @@ async def reasoning_node(state: AgentState) -> dict:
 
     response = await llm.ainvoke(messages)
 
-    tool_call_count = len(getattr(response, "tool_calls", []) or [])
+    raw_tool_calls = list(getattr(response, "tool_calls", []) or [])
     logger.info(
-        "reasoning: %d tool_calls, %d chars draft",
-        tool_call_count,
+        "reasoning: %d tool_calls, %d chars draft, tools=%s",
+        len(raw_tool_calls),
         len(llm_text(response.content) or ""),
+        [tc.get("name") for tc in raw_tool_calls],
     )
 
     return {
