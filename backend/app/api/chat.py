@@ -302,12 +302,24 @@ async def send_message(
     final_text = result["final_text"]
     if final_text:
         try:
+            persisted_payload: dict | None = None
+            runs = result["tool_runs"]
+            cards = result["cards"]
+            svg = result["chart_svg"]
+            if runs or cards or svg:
+                persisted_payload = {}
+                if runs:
+                    persisted_payload["runs"] = runs
+                if cards:
+                    persisted_payload["cards"] = cards
+                if svg:
+                    persisted_payload["chart_svg"] = svg
             await create_message(
                 conversation_id=conversation_id,
                 role="assistant",
                 content=final_text,
                 language=language,
-                tool_calls={"runs": result["tool_runs"]} if result["tool_runs"] else None,
+                tool_calls=persisted_payload,
             )
         except Exception as exc:
             logger.warning("Failed to persist assistant message: %s", exc)
@@ -376,12 +388,24 @@ async def confirm(
     final_text = result["final_text"]
     if final_text:
         try:
+            persisted_payload: dict | None = None
+            runs = result["tool_runs"]
+            cards = result["cards"]
+            svg = result["chart_svg"]
+            if runs or cards or svg:
+                persisted_payload = {}
+                if runs:
+                    persisted_payload["runs"] = runs
+                if cards:
+                    persisted_payload["cards"] = cards
+                if svg:
+                    persisted_payload["chart_svg"] = svg
             await create_message(
                 conversation_id=conversation_id,
                 role="assistant",
                 content=final_text,
                 language=language,
-                tool_calls={"runs": result["tool_runs"]} if result["tool_runs"] else None,
+                tool_calls=persisted_payload,
             )
         except Exception:
             pass

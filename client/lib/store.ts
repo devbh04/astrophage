@@ -132,21 +132,56 @@ export const useAppStore = create<AppState>((set) => ({
     })),
   hydrateFromMessages: (messages) =>
     set({
-      artifacts: messages.map((m) => {
-        const tool_calls = (m as { tool_calls?: { runs?: ToolRun[] } | null })
-          .tool_calls;
+      artifacts: messages.flatMap((m) => {
+        const payload = (m as {
+          tool_calls?: {
+            runs?: ToolRun[];
+            cards?: { card_type: string; data: Record<string, unknown> }[];
+            chart_svg?: string | null;
+          } | null;
+        }).tool_calls;
+
         const runs =
-          tool_calls && Array.isArray(tool_calls.runs) ? tool_calls.runs : [];
-        return {
-          kind: "text" as const,
+          payload && Array.isArray(payload.runs) ? payload.runs : [];
+        const cards =
+          payload && Array.isArray(payload.cards) ? payload.cards : [];
+        const chartSvg =
+          payload && typeof payload.chart_svg === "string"
+            ? payload.chart_svg
+            : null;
+
+        const baseTime = m.created_at || new Date().toISOString();
+        const out: ChatArtifact[] = [];
+
+        // Order: chart svg → cards → text bubble (matches live render order)
+        if (chartSvg && chartSvg.trim()) {
+          out.push({
+            kind: "chart_svg",
+            id: `${m.id || newId()}-svg`,
+            svg: chartSvg,
+            created_at: baseTime,
+          });
+        }
+        for (const c of cards) {
+          out.push({
+            kind: "card",
+            id: `${m.id || newId()}-card-${out.length}`,
+            card_type: c.card_type,
+            data: c.data || {},
+            created_at: baseTime,
+          });
+        }
+        out.push({
+          kind: "text",
           id: m.id || newId(),
           role: (m.role === "assistant" ? "assistant" : "user") as
             | "user"
             | "assistant",
           content: m.content,
           toolRuns: runs.length > 0 ? runs : undefined,
-          created_at: m.created_at || new Date().toISOString(),
-        };
+          created_at: baseTime,
+        });
+        return out;
       }),
     }),
 
