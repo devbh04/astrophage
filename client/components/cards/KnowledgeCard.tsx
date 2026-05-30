@@ -3,19 +3,41 @@ import CardShell from "./CardShell";
 import type { KnowledgeHit } from "@/lib/api";
 
 interface Props {
-  data: KnowledgeHit[];
+  // The backend wraps the knowledge_lookup list result in `{hits: [...]}`
+  // so it fits the ChatCard.data dict schema. Also accept a raw array
+  // for backwards compatibility.
+  data: { hits?: KnowledgeHit[] } | KnowledgeHit[];
 }
 
 export default function KnowledgeCard({ data }: Props) {
+  const hits: KnowledgeHit[] = Array.isArray(data)
+    ? data
+    : (data?.hits || []);
+
+  if (hits.length === 0) {
+    return (
+      <CardShell
+        title="Sourced Wisdom"
+        badge="0 passages"
+        icon={<BookOpen size={16} />}
+        accent="gold"
+      >
+        <p className="font-body-md text-[12px] text-on-surface-variant">
+          No matching passages found in the knowledge base.
+        </p>
+      </CardShell>
+    );
+  }
+
   return (
     <CardShell
       title="Sourced Wisdom"
-      badge={`${data.length} passages`}
+      badge={`${hits.length} passages`}
       icon={<BookOpen size={16} />}
       accent="gold"
     >
       <div className="space-y-2.5">
-        {data.map((hit, i) => (
+        {hits.map((hit, i) => (
           <div
             key={hit.chunk_id || i}
             className="bg-surface-container-low/60 wobbly-border-sm p-3"

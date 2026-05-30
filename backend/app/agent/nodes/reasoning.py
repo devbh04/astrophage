@@ -26,6 +26,20 @@ needs computed data — Panchang, dashas, transits, charts, knowledge lookup,
 muhurta, current sky — call the relevant tool(s) instead of guessing.
 Never invent timing, dates, or planetary positions; always call the tools.
 
+SPECIFIC TOOL GUIDANCE:
+- ``geocode_place``: When the user mentions a city, town, or place name — always run this first to get lat/lng/timezone before any other tool that needs coordinates.
+- ``knowledge_lookup``: For conceptual questions about Vedic astrology — "What does Saturn signify?", "Explain Rahu and Ketu", "What is Sade Sati?", "Tell me about Nakshatras", "What are the different types of Dasha?", "Explain the meaning of houses in astrology". Use this tool to search the curated knowledge base for accurate information.
+- ``get_panchang``: For daily Panchang, tithi, nakshatra, yoga, karana, sunrise/sunset times for a specific date and place.
+- ``compute_birth_chart``: When the user provides birth details (date, time, place) and wants their chart calculated.
+- ``compute_dasha_periods``: For Vimshottari Dasha timeline from a natal chart.
+- ``compute_nakshatra_details``: For deep analysis of the natal Moon's Nakshatra.
+- ``check_sade_sati``: To check Sade Sati / Ashtama Shani status.
+- ``kundali_milan``: For compatibility analysis between two charts.
+- ``render_chart_svg``: To generate a visual chart SVG.
+- ``compute_muhurta``: To find auspicious timing windows for specific purposes.
+- ``get_daily_transits``: For current planetary transits relative to a natal chart.
+- ``get_current_sky``: For generic current planetary positions, moon phase, retrogrades.
+
 When the user references a city, call ``geocode_place`` first to get
 lat/lng/timezone, then pass those into the tool that needs them.
 

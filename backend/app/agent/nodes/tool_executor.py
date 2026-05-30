@@ -55,9 +55,17 @@ async def _emit_card(tool_name: str, result):
         card_type = CARD_TYPES.get(tool_name)
         if not card_type:
             return
+        # `data` must be a dict for the ChatCard schema. knowledge_lookup
+        # returns a list, so wrap it in {hits: [...]}.
+        if isinstance(result, list):
+            payload: dict = {"hits": result}
+        elif isinstance(result, dict):
+            payload = result
+        else:
+            payload = {"value": result}
         await adispatch_custom_event(
             "structured_card",
-            {"card_type": card_type, "data": result},
+            {"card_type": card_type, "data": payload},
         )
     except Exception:
         pass

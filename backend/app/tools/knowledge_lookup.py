@@ -163,9 +163,9 @@ async def knowledge_lookup(
     try:
         qc = qdrant_client or _get_qdrant_client()
         qfilter = _to_qdrant_filter(filters)
-        results = await qc.search(
+        results = await qc.query_points(
             collection_name=COLLECTION_NAME,
-            query_vector=vector,
+            query=vector,
             limit=top_k,
             query_filter=qfilter,
         )
@@ -174,16 +174,27 @@ async def knowledge_lookup(
         return []
 
     out: list[dict] = []
-    for hit in results or []:
-        payload = getattr(hit, "payload", None) or (
-            hit.get("payload") if isinstance(hit, dict) else {}
-        ) or {}
-        score = getattr(hit, "score", None)
-        if score is None and isinstance(hit, dict):
-            score = hit.get("score")
-        chunk_id = getattr(hit, "id", None)
-        if chunk_id is None and isinstance(hit, dict):
-            chunk_id = hit.get("id")
+    # The response structure changed in newer Qdrant client
+    if hasattr(results, 'points') and results.points:
+        hits = results.points
+    elif isinstance(results, dict) and 'points' in results:
+        hits = results['points']
+    else:
+        hits = results or []
+    
+    for hit in hits:
+        # Handle different response structures
+        if hasattr(hit, 'payload'):
+            payload = hit.payload or {}
+            score = hit.score if hasattr(hit, 'score') else 0.0
+            chunk_id = hit.id if hasattr(hit, 'id') else None
+        elif isinstance(hit, dict):
+            payload = hit.get('payload', {}) or {}
+            score = hit.get('score', 0.0)
+            chunk_id = hit.get('id')
+        else:
+            continue
+            
         out.append({
             "text": payload.get("text", ""),
             "source": payload.get("source", ""),
