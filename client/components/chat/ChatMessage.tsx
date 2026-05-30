@@ -1,3 +1,5 @@
+import MarkdownProse from "./MarkdownProse";
+
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
@@ -37,12 +39,21 @@ export default function ChatMessage({
             </div>
           )}
         </div>
-        <div className="font-body-md text-body-md leading-relaxed text-on-surface whitespace-pre-wrap">
-          {content}
-          {isStreaming && (
-            <span className="inline-block w-[2px] h-4 bg-solar-gold animate-pulse ml-[1px] align-text-bottom" />
-          )}
-        </div>
+        {isUser ? (
+          <div className="font-body-md text-body-md leading-relaxed text-on-surface whitespace-pre-wrap">
+            {content}
+            {isStreaming && (
+              <span className="inline-block w-px h-4 bg-solar-gold animate-pulse ml-px align-text-bottom" />
+            )}
+          </div>
+        ) : (
+          <div className="relative">
+            <MarkdownProse content={content} />
+            {isStreaming && (
+              <span className="inline-block w-px h-4 bg-solar-gold animate-pulse ml-px align-text-bottom" />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
