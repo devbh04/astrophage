@@ -70,9 +70,14 @@ def check_sade_sati(
 
 
 @tool
-def get_panchang(date: str, lat: float, lng: float, timezone: str) -> dict:
-    """Five limbs of Panchang plus inauspicious windows for a given date+place. date is YYYY-MM-DD, timezone is IANA (e.g. Asia/Kolkata). For Panchang, ALWAYS pass the user's residence lat/lng/timezone from the user-context block — Panchang is observed from where the user lives."""
-    return R.get_panchang_resolved(date, lat, lng, timezone)
+def get_panchang(
+    date: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    timezone: str | None = None,
+) -> dict:
+    """Five limbs of Panchang for a date+place. All four arguments may be omitted — the system fills in today's date and the user's residence (lat/lng/timezone). Pass them only when the user explicitly names a date or a different place."""
+    return R.get_panchang_resolved(date=date, lat=lat, lng=lng, timezone=timezone)
 
 
 @tool
@@ -101,15 +106,22 @@ def render_chart_svg(
 
 @tool
 def compute_muhurta(
-    purpose: str,
-    start_date: str,
-    end_date: str,
-    lat: float,
-    lng: float,
-    timezone: str,
+    purpose: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    timezone: str | None = None,
 ) -> dict:
-    """Find top 3 auspicious 30-minute windows for a purpose (wedding/travel/business_start/griha_pravesh/general) in a date range."""
-    return R.compute_muhurta_resolved(purpose, start_date, end_date, lat, lng, timezone)
+    """Find top 3 auspicious 30-minute windows for a purpose (wedding/travel/business_start/griha_pravesh/general) in a date range. Date and place may be omitted — they default to today and the user's residence."""
+    return R.compute_muhurta_resolved(
+        purpose=purpose,
+        start_date=start_date,
+        end_date=end_date,
+        lat=lat,
+        lng=lng,
+        timezone=timezone,
+    )
 
 
 @tool

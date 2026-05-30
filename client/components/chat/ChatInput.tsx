@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import { Send, Mic } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 interface ChatInputProps {
   onSend: (content: string) => void;
+  onVoiceMode?: () => void;
   disabled?: boolean;
 }
 
-export default function ChatInput({ onSend, disabled }: ChatInputProps) {
+export default function ChatInput({ onSend, onVoiceMode, disabled }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -50,6 +51,17 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
             className="wobbly-border-sm bg-surface-container-low border-outline/30 font-body-md text-on-surface placeholder:text-outline-variant resize-none min-h-[48px] max-h-[160px] pr-4 focus:border-solar-gold focus:ring-solar-gold/20"
           />
         </div>
+        {onVoiceMode && (
+          <button
+            type="button"
+            onClick={onVoiceMode}
+            disabled={disabled}
+            title="Voice mode"
+            className="btn-ghost wobbly-border-sm p-3 shrink-0 hover:text-solar-gold disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Mic size={18} />
+          </button>
+        )}
         <button
           onClick={handleSubmit}
           disabled={!value.trim() || disabled}
@@ -59,7 +71,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         </button>
       </div>
       <p className="text-center mt-2 font-nav-label text-[9px] uppercase tracking-widest text-outline-variant">
-        SHIFT + ENTER for new line • ENTER to send
+        SHIFT + ENTER for new line • ENTER to send • Mic for voice mode
       </p>
     </div>
   );

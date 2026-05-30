@@ -30,6 +30,12 @@ _current_natal_chart: ContextVar[dict | None] = ContextVar(
 _current_chart_format: ContextVar[str] = ContextVar(
     "astrophage_chart_format", default="south_indian"
 )
+_current_residence: ContextVar[dict | None] = ContextVar(
+    "astrophage_residence", default=None
+)
+_current_self_birth: ContextVar[dict | None] = ContextVar(
+    "astrophage_self_birth", default=None
+)
 
 
 def get_current_user_id() -> str | None:
@@ -42,6 +48,14 @@ def get_current_natal_chart() -> dict | None:
 
 def get_current_chart_format() -> str:
     return _current_chart_format.get()
+
+
+def get_current_residence() -> dict | None:
+    return _current_residence.get()
+
+
+def get_current_self_birth() -> dict | None:
+    return _current_self_birth.get()
 
 
 @contextmanager
@@ -60,14 +74,20 @@ def set_request_context(
     user_id: str | None,
     natal_chart: dict | None = None,
     chart_format: str = "south_indian",
+    residence: dict | None = None,
+    self_birth: dict | None = None,
 ) -> Iterator[None]:
     """Bind everything tools may need from the request, atomically."""
     t1 = _current_user_id.set(user_id)
     t2 = _current_natal_chart.set(natal_chart or None)
     t3 = _current_chart_format.set(chart_format or "south_indian")
+    t4 = _current_residence.set(residence or None)
+    t5 = _current_self_birth.set(self_birth or None)
     try:
         yield
     finally:
+        _current_self_birth.reset(t5)
+        _current_residence.reset(t4)
         _current_chart_format.reset(t3)
         _current_natal_chart.reset(t2)
         _current_user_id.reset(t1)
@@ -77,6 +97,8 @@ __all__ = [
     "get_current_user_id",
     "get_current_natal_chart",
     "get_current_chart_format",
+    "get_current_residence",
+    "get_current_self_birth",
     "set_current_user_id",
     "set_request_context",
 ]

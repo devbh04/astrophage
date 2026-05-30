@@ -27,6 +27,7 @@ from app.api.conversations import router as conversations_router
 from app.api.panchang import router as panchang_router
 from app.api.tools import router as tools_router
 from app.api.chat import router as chat_router
+from app.api.voice import router as voice_router
 from app.agent._event_bus import bus
 from app.db.queries import get_user_by_id
 
@@ -74,6 +75,7 @@ app.include_router(conversations_router)
 app.include_router(panchang_router)
 app.include_router(tools_router)
 app.include_router(chat_router)
+app.include_router(voice_router)
 
 
 @app.get("/health")

@@ -1,6 +1,7 @@
 """
 Single source of truth for tool callables that need request-scoped
-defaults (the user's preloaded ``natal_chart`` and ``chart_format``).
+defaults (the user's preloaded ``natal_chart``, ``chart_format``,
+``residence`` coords, etc.).
 
 Both ``TOOL_REGISTRY`` (used by the executor) and ``LC_TOOLS`` (bound to
 the LLM) call into this module. That way the resolver logic runs no
@@ -11,11 +12,15 @@ the LLM sees in its tool docs and what actually runs.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.agent._user_context import (
     get_current_chart_format,
     get_current_natal_chart,
+    get_current_residence,
+    get_current_self_birth,
 )
 from app.tools.birth_chart import compute_birth_chart as _compute_birth_chart
 from app.tools.geocode import geocode_place as _geocode_place
@@ -30,6 +35,9 @@ from app.tools.muhurta import compute_muhurta as _compute_muhurta
 from app.tools.daily_transits import get_daily_transits as _get_daily_transits
 from app.tools.current_sky import get_current_sky as _get_current_sky
 from app.tools.family_profile import get_family_profile as _get_family_profile
+
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def is_full_chart(chart: Any) -> bool:
@@ -64,6 +72,58 @@ def resolve_style(style: Any) -> str:
     return "south_indian"
 
 
+def _resolve_place(
+    lat: Any,
+    lng: Any,
+    timezone: Any,
+    *,
+    prefer_birth: bool = False,
+) -> tuple[float, float, str]:
+    """
+    Pick coordinates for a tool call.
+
+    - If the LLM passed all three explicitly, honour them.
+    - Else fall back to the bound residence (default for current-time tools).
+    - Else fall back to the bound birth place (when ``prefer_birth`` or as
+      a last resort).
+    - Else default to Mumbai/IST.
+    """
+    if (
+        isinstance(lat, (int, float))
+        and isinstance(lng, (int, float))
+        and isinstance(timezone, str)
+        and timezone.strip()
+    ):
+        return float(lat), float(lng), timezone
+
+    residence = get_current_residence() or {}
+    birth = get_current_self_birth() or {}
+
+    candidates: list[dict] = []
+    if prefer_birth:
+        candidates = [birth, residence]
+    else:
+        candidates = [residence, birth]
+
+    for c in candidates:
+        c_lat = c.get("lat")
+        c_lng = c.get("lng")
+        c_tz = c.get("timezone")
+        if (
+            isinstance(c_lat, (int, float))
+            and isinstance(c_lng, (int, float))
+            and isinstance(c_tz, str)
+            and c_tz.strip()
+        ):
+            return float(c_lat), float(c_lng), c_tz
+
+    return 19.076, 72.8777, "Asia/Kolkata"  # Mumbai default
+
+
+def _today_iso() -> str:
+    return datetime.now(IST).strftime("%Y-%m-%d")
+
+
 # ── Registry-callable wrappers ──────────────────────────────────
 # All of these accept any subset of the original args (including none)
 # and fill in resolver-derived defaults. Both the bare executor and the
@@ -95,11 +155,12 @@ def compute_dasha_periods_resolved(
     timezone: str | None = None,
     levels: int = 2,
 ) -> dict:
+    self_birth = get_current_self_birth() or {}
     return _compute_dasha_periods(
         resolve_chart(natal_chart),
-        birth_date or "",
-        birth_time,
-        timezone or "Asia/Kolkata",
+        birth_date or self_birth.get("birth_date") or "",
+        birth_time if birth_time is not None else self_birth.get("birth_time"),
+        timezone or self_birth.get("timezone") or "Asia/Kolkata",
         levels=levels,
     )
 
@@ -116,12 +177,13 @@ def check_sade_sati_resolved(
 
 
 def get_panchang_resolved(
-    date: str,
-    lat: float,
-    lng: float,
-    timezone: str,
+    date: str | None = None,
+    lat: Any = None,
+    lng: Any = None,
+    timezone: str | None = None,
 ) -> dict:
-    return _get_panchang(date, lat, lng, timezone)
+    rlat, rlng, rtz = _resolve_place(lat, lng, timezone)
+    return _get_panchang(date or _today_iso(), rlat, rlng, rtz)
 
 
 def knowledge_lookup_resolved(query: str, top_k: int = 5) -> list:
@@ -143,14 +205,23 @@ def render_chart_svg_resolved(
 
 
 def compute_muhurta_resolved(
-    purpose: str,
-    start_date: str,
-    end_date: str,
-    lat: float,
-    lng: float,
-    timezone: str,
+    purpose: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    lat: Any = None,
+    lng: Any = None,
+    timezone: str | None = None,
 ) -> dict:
-    return _compute_muhurta(purpose, start_date, end_date, lat, lng, timezone)
+    rlat, rlng, rtz = _resolve_place(lat, lng, timezone)
+    today = _today_iso()
+    return _compute_muhurta(
+        (purpose or "general"),
+        start_date or today,
+        end_date or today,
+        rlat,
+        rlng,
+        rtz,
+    )
 
 
 def get_daily_transits_resolved(

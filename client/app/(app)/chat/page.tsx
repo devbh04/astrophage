@@ -13,6 +13,7 @@ import ToolBadgeStrip from "@/components/chat/ToolBadgeStrip";
 import SensitiveReadingDialog from "@/components/chat/SensitiveReadingDialog";
 import StructuredCard from "@/components/cards/StructuredCard";
 import ChartSvgCard from "@/components/cards/ChartSvgCard";
+import VoiceModal from "@/components/voice/VoiceModal";
 
 export default function ChatPage() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function ChatPage() {
 
   const [confirmationPreview, setConfirmationPreview] = useState<string | null>(null);
   const [convId, setConvId] = useState<string | null>(conversationParam);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -373,7 +375,13 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      <ChatInput onSend={handleSend} disabled={isStreaming} />
+      <ChatInput
+        onSend={handleSend}
+        disabled={isStreaming}
+        onVoiceMode={() => setVoiceOpen(true)}
+      />
+
+      <VoiceModal open={voiceOpen} onClose={() => setVoiceOpen(false)} />
 
       <SensitiveReadingDialog
         open={!!confirmationPreview}
