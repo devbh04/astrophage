@@ -3,23 +3,24 @@ import type { NextRequest } from "next/server";
 
 /**
  * Authentication redirects.
- * - Protected /(app)/* routes redirect to /login if no session cookie
- * - Auth /(auth)/* routes redirect to /chat if logged in
+ *
+ * The backend issues an HttpOnly session cookie on its own domain. In
+ * cross-site production deployments (frontend on Vercel, backend on a
+ * separate host) that cookie is NOT visible to the Next.js server, so
+ * server-side redirects based on it always think the user is logged
+ * out. To avoid the false redirect-to-login loop we delegate the auth
+ * check to the (app) layout, which fires ``/auth/me`` from the browser
+ * with credentials and bounces to ``/login`` itself on 401.
+ *
+ * What the middleware still does:
+ *  - When the cookie IS visible (same-origin dev, or shared parent
+ *    domain in prod), redirect ``/login`` and ``/register`` to ``/chat``
+ *    so logged-in users don't see the auth screen flicker.
+ *  - Otherwise pass through unchanged.
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get("astrophage_session");
-
-  const isAppRoute =
-    pathname.startsWith("/chat") ||
-    pathname.startsWith("/chart") ||
-    pathname.startsWith("/family") ||
-    pathname.startsWith("/calendar") ||
-    pathname.startsWith("/settings");
-
-  if (isAppRoute && !sessionCookie) {
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
 
   const isAuthRoute =
     pathname.startsWith("/login") || pathname.startsWith("/register");
@@ -32,13 +33,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/chat/:path*",
-    "/chart/:path*",
-    "/family/:path*",
-    "/calendar/:path*",
-    "/settings/:path*",
-    "/login",
-    "/register",
-  ],
+  matcher: ["/login", "/register"],
 };

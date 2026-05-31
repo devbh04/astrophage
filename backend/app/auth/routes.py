@@ -1,5 +1,7 @@
 """Auth routes — register, login, logout, me, update preferences."""
 
+import os
+
 from fastapi import APIRouter, HTTPException, Response, Depends, status
 from pydantic import BaseModel
 
@@ -21,16 +23,52 @@ class UpdatePreferencesBody(BaseModel):
     residence_timezone: str | None = None
 
 
+def _cookie_security() -> tuple[bool, str]:
+    """
+    Pick (secure, samesite) for the session cookie.
+
+    Cross-origin browser cookie rules:
+    - Different scheme or different registrable domain between
+      frontend and backend = "cross-site". Browsers will only send the
+      cookie back on cross-site requests when ``Secure=true`` and
+      ``SameSite=None``. ``SameSite=Lax`` silently drops the cookie.
+    - On the same origin (local dev with both on http://localhost),
+      ``SameSite=Lax`` and ``Secure=false`` still work and avoid the
+      "must be HTTPS" complaint.
+
+    Set ``COOKIE_CROSS_SITE=1`` in production .env when frontend +
+    backend live on different domains. Defaults to dev-friendly mode.
+    """
+    cross_site = os.environ.get("COOKIE_CROSS_SITE", "0").lower() in ("1", "true", "yes")
+    if cross_site:
+        return True, "none"
+    return False, "lax"
+
+
+def _cookie_domain() -> str | None:
+    """
+    Optional explicit cookie domain — only useful when the frontend and
+    backend share a parent domain (e.g. ``app.astrophage.com`` and
+    ``api.astrophage.com`` both setting cookies on ``.astrophage.com``).
+    Leave unset for fully separate domains; the cookie will be scoped
+    to the backend host, which is what you want for cross-site auth.
+    """
+    domain = os.environ.get("COOKIE_DOMAIN", "").strip()
+    return domain or None
+
+
 def _set_auth_cookie(response: Response, token: str) -> None:
     """Set the JWT as an HTTP-only cookie with 7-day expiry."""
+    secure, samesite = _cookie_security()
     response.set_cookie(
         key="astrophage_session",
         value=token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=secure,
+        samesite=samesite,
         max_age=7 * 24 * 3600,
         path="/",
+        domain=_cookie_domain(),
     )
 
 
@@ -83,7 +121,14 @@ async def login(body: LoginRequest, response: Response):
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie(key="astrophage_session", path="/")
+    secure, samesite = _cookie_security()
+    response.delete_cookie(
+        key="astrophage_session",
+        path="/",
+        secure=secure,
+        samesite=samesite,
+        domain=_cookie_domain(),
+    )
     return {"message": "Logged out"}
 
 
