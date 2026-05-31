@@ -296,6 +296,31 @@ async def reasoning_node(state: AgentState) -> dict:
     )
     messages.append(SystemMessage(content=language_anchor))
 
+    # Final anchor: rewrite the most recent HumanMessage to *prepend* the
+    # language directive directly inside the user-turn content. Gemini
+    # weighs the freshest user-turn tokens far more than any system
+    # message stuck behind a long conversation history. This single line
+    # is the actual reason language enforcement starts working — the
+    # SystemMessage above is belt-and-braces.
+    if messages:
+        from langchain_core.messages import HumanMessage  # local import to avoid cycle
+        for idx in range(len(messages) - 1, -1, -1):
+            msg = messages[idx]
+            if isinstance(msg, HumanMessage):
+                original = msg.content if isinstance(msg.content, str) else str(msg.content)
+                directive = (
+                    f"[Reply strictly in {language_name}. "
+                    f"Ignore the language of earlier turns; the seeker has "
+                    f"set their preferred language to {language_name}.]\n\n"
+                )
+                messages[idx] = HumanMessage(content=directive + original)
+                break
+
+    logger.info(
+        "reasoning: lang=%s anchored on latest user turn",
+        language_code,
+    )
+
     response = await llm.ainvoke(messages)
 
     raw_tool_calls = list(getattr(response, "tool_calls", []) or [])

@@ -154,12 +154,16 @@ def compute_dasha_periods_resolved(
     levels: int = 2,
 ) -> dict:
     self_birth = get_current_self_birth() or {}
+    try:
+        levels_int = int(levels) if levels is not None else 2
+    except (TypeError, ValueError):
+        levels_int = 2
     return _compute_dasha_periods(
         resolve_chart(natal_chart),
         birth_date or self_birth.get("birth_date") or "",
         birth_time if birth_time is not None else self_birth.get("birth_time"),
         timezone or self_birth.get("timezone") or "Asia/Kolkata",
-        levels=levels,
+        levels=levels_int,
     )
 
 
