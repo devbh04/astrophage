@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from app.agent._user_context import (
     get_current_chart_format,
+    get_current_family_rows,
     get_current_natal_chart,
     get_current_residence,
     get_current_self_birth,
@@ -74,6 +75,105 @@ def resolve_style(style: Any) -> str:
     return "south_indian"
 
 
+# ── Subject resolution ─────────────────────────────────────────
+#
+# Many tools work on a "subject" — by default the seeker, but the user can
+# also ask about a saved family member ("show my mother's chart",
+# "compute Priya's dasha"). Rather than forcing the LLM to call
+# ``get_family_profile`` first and thread the returned chart back into
+# the next tool call (which it routinely skips), we let every chart
+# tool accept a ``subject`` string. The resolver maps that string to a
+# profile row from the request-scoped family vault and returns the
+# corresponding chart + birth details.
+
+_SELF_TOKENS = {"self", "me", "myself", "user", "i", "seeker"}
+
+
+def _normalize_token(s: Any) -> str:
+    return (s or "").strip().lower() if isinstance(s, str) else ""
+
+
+def _self_payload() -> dict:
+    """Return the seeker's bound payload as a uniform dict."""
+    chart = get_current_natal_chart() or {}
+    birth = get_current_self_birth() or {}
+    return {
+        "chart": chart,
+        "birth_date": birth.get("birth_date"),
+        "birth_time": birth.get("birth_time"),
+        "timezone": birth.get("timezone") or "Asia/Kolkata",
+        "name": birth.get("name") or "Self",
+        "relationship": "self",
+        "is_self": True,
+    }
+
+
+def _family_payload(row: dict) -> dict:
+    """Normalize a family-vault row into a subject payload."""
+    return {
+        "chart": row.get("computed_chart") or {},
+        "birth_date": row.get("birth_date"),
+        "birth_time": row.get("birth_time"),
+        "timezone": row.get("timezone") or "Asia/Kolkata",
+        "name": row.get("name"),
+        "relationship": row.get("relationship"),
+        "is_self": False,
+    }
+
+
+def resolve_subject(subject: Any) -> dict | None:
+    """
+    Map a ``subject`` string (relationship, name, or "self") to a payload
+    with their chart + birth details. Returns ``None`` if a subject was
+    requested but couldn't be matched. Returns ``self`` payload when
+    ``subject`` is empty/None.
+
+    Match priority:
+      1. self / me / myself / empty → seeker
+      2. exact relationship (case-insensitive)
+      3. exact name (case-insensitive)
+      4. substring on name
+      5. substring on relationship
+    """
+    token = _normalize_token(subject)
+    if not token or token in _SELF_TOKENS:
+        return _self_payload()
+
+    rows = get_current_family_rows()
+    if not rows:
+        return None
+
+    # 1. exact relationship
+    for row in rows:
+        if _normalize_token(row.get("relationship")) == token:
+            return _family_payload(row)
+    # 2. exact name
+    for row in rows:
+        if _normalize_token(row.get("name")) == token:
+            return _family_payload(row)
+    # 3. substring on name
+    for row in rows:
+        rname = _normalize_token(row.get("name"))
+        if rname and (token in rname or rname in token):
+            return _family_payload(row)
+    # 4. substring on relationship
+    for row in rows:
+        rrel = _normalize_token(row.get("relationship"))
+        if rrel and (token in rrel or rrel in token):
+            return _family_payload(row)
+    return None
+
+
+def _subject_chart(subject: Any, fallback_chart: Any) -> dict:
+    """Pick the chart for a tool call, honouring an explicit subject."""
+    payload = resolve_subject(subject)
+    if payload and isinstance(payload.get("chart"), dict) and payload["chart"].get("planets"):
+        return payload["chart"]
+    # subject was named but the family member has no precomputed chart;
+    # fall back to whatever the LLM passed (or the seeker's chart).
+    return resolve_chart(fallback_chart)
+
+
 def _resolve_place(
     lat: Any,
     lng: Any,
@@ -122,6 +222,28 @@ def _resolve_place(
     return 19.076, 72.8777, "Asia/Kolkata"  # Mumbai default
 
 
+# Per-request scratch slot for the chart that ``render_chart_svg``
+# actually rendered, so the tool executor's companion ``birth_chart``
+# card can show the matching planet table (e.g. mother's chart, not the
+# seeker's). ContextVar so concurrent requests don't see each other's
+# scratch state.
+from contextvars import ContextVar as _ContextVar  # local import to avoid header churn
+_last_rendered_chart: _ContextVar[dict | None] = _ContextVar(
+    "astrophage_last_rendered_chart", default=None
+)
+
+
+def get_last_rendered_chart() -> dict | None:
+    return _last_rendered_chart.get()
+
+
+def _set_last_rendered_chart(chart: dict | None) -> None:
+    if isinstance(chart, dict) and chart.get("planets"):
+        _last_rendered_chart.set(chart)
+    else:
+        _last_rendered_chart.set(None)
+
+
 def _today_iso() -> str:
     return datetime.now(IST).strftime("%Y-%m-%d")
 
@@ -164,30 +286,41 @@ def compute_dasha_periods_resolved(
     birth_time: str | None = None,
     timezone: str | None = None,
     levels: int = 2,
+    subject: str | None = None,
 ) -> dict:
+    payload = resolve_subject(subject) or {}
     self_birth = get_current_self_birth() or {}
     try:
         levels_int = int(levels) if levels is not None else 2
     except (TypeError, ValueError):
         levels_int = 2
+    chart = _subject_chart(subject, natal_chart)
     return _compute_dasha_periods(
-        resolve_chart(natal_chart),
-        birth_date or self_birth.get("birth_date") or "",
-        birth_time if birth_time is not None else self_birth.get("birth_time"),
-        timezone or self_birth.get("timezone") or "Asia/Kolkata",
+        chart,
+        birth_date or payload.get("birth_date") or self_birth.get("birth_date") or "",
+        (
+            birth_time
+            if birth_time is not None
+            else payload.get("birth_time") or self_birth.get("birth_time")
+        ),
+        timezone or payload.get("timezone") or self_birth.get("timezone") or "Asia/Kolkata",
         levels=levels_int,
     )
 
 
-def compute_nakshatra_details_resolved(natal_chart: dict | None = None) -> dict:
-    return _compute_nakshatra_details(resolve_chart(natal_chart))
+def compute_nakshatra_details_resolved(
+    natal_chart: dict | None = None,
+    subject: str | None = None,
+) -> dict:
+    return _compute_nakshatra_details(_subject_chart(subject, natal_chart))
 
 
 def check_sade_sati_resolved(
     natal_chart: dict | None = None,
     as_of: str | None = None,
+    subject: str | None = None,
 ) -> dict:
-    return _check_sade_sati(resolve_chart(natal_chart), as_of=as_of)
+    return _check_sade_sati(_subject_chart(subject, natal_chart), as_of=as_of)
 
 
 def get_panchang_resolved(
@@ -222,7 +355,13 @@ async def kundali_milan_resolved(
         if isinstance(value, dict) and value:
             return value
         if isinstance(value, str) and value.strip():
-            # Try as relationship first, then as name.
+            # First try the request-bound family vault (fast, sync).
+            payload = resolve_subject(value)
+            if payload and isinstance(payload.get("chart"), dict) and payload["chart"].get("planets"):
+                return payload["chart"]
+            # Then fall back to the async family lookup for substring
+            # matches that ``resolve_subject`` may have missed (kept for
+            # backward compatibility with edge cases).
             from app.tools.family_profile import get_family_profile as _gfp
 
             for kwargs in (
@@ -266,8 +405,17 @@ async def kundali_milan_resolved(
 def render_chart_svg_resolved(
     natal_chart: dict | None = None,
     style: str | None = None,
+    subject: str | None = None,
 ) -> str:
-    return _render_chart_svg(resolve_chart(natal_chart), resolve_style(style))
+    chart = _subject_chart(subject, natal_chart)
+    # Stash the chart we actually rendered so the executor's companion
+    # ``birth_chart`` card shows the right person's planet table (not
+    # the seeker's, when the user asked about a family member).
+    try:
+        _set_last_rendered_chart(chart)
+    except Exception:
+        pass
+    return _render_chart_svg(chart, resolve_style(style))
 
 
 def compute_muhurta_resolved(
@@ -293,8 +441,9 @@ def compute_muhurta_resolved(
 def get_daily_transits_resolved(
     natal_chart: dict | None = None,
     as_of: str | None = None,
+    subject: str | None = None,
 ) -> dict:
-    return _get_daily_transits(resolve_chart(natal_chart), as_of=as_of)
+    return _get_daily_transits(_subject_chart(subject, natal_chart), as_of=as_of)
 
 
 def get_current_sky_resolved(as_of: str | None = None) -> dict:
@@ -312,6 +461,8 @@ __all__ = [
     "is_full_chart",
     "resolve_chart",
     "resolve_style",
+    "resolve_subject",
+    "get_last_rendered_chart",
     "geocode_place_resolved",
     "compute_birth_chart_resolved",
     "compute_dasha_periods_resolved",

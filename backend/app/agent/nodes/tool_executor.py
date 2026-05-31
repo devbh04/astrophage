@@ -26,6 +26,7 @@ except Exception:  # pragma: no cover
 from app.agent.state import AgentState
 from app.agent._user_context import get_current_natal_chart
 from app.tools import TOOL_REGISTRY
+from app.tools._resolvers import get_last_rendered_chart
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,11 @@ async def _emit_card(tool_name: str, result):
                 await adispatch_custom_event("chart_svg", result)
             # Also emit a birth_chart structured card so the user always
             # sees the planet table next to the visual chart in text mode.
-            chart = get_current_natal_chart()
+            # Prefer the chart that was *actually rendered* (could be a
+            # family member's chart when the LLM passed ``subject=...``);
+            # fall back to the seeker's bound chart only if that scratch
+            # slot is empty.
+            chart = get_last_rendered_chart() or get_current_natal_chart()
             if isinstance(chart, dict) and chart.get("planets"):
                 await adispatch_custom_event(
                     "structured_card",

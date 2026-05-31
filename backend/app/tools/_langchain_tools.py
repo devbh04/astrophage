@@ -43,30 +43,40 @@ def compute_dasha_periods(
     birth_time: str | None = None,
     timezone: str | None = None,
     levels: int = 2,
+    subject: str | None = None,
 ) -> dict:
-    """Calculate the Vimshottari Dasha timeline. ``natal_chart`` may be omitted — the user's preloaded chart is substituted automatically. ``birth_date``, ``birth_time``, and ``timezone`` should come from the user-context block in the system prompt."""
+    """Calculate the Vimshottari Dasha timeline. ``natal_chart`` may be omitted — by default the user's own preloaded chart is used. To compute a saved family member's dasha (mother, spouse, child, sibling, named person), pass ``subject="<relationship-or-name>"`` and the system will substitute their chart and birth details automatically. ``birth_date``, ``birth_time``, and ``timezone`` should usually come from the user-context block in the system prompt; they're auto-filled from the resolved subject when omitted."""
     return R.compute_dasha_periods_resolved(
         natal_chart=natal_chart,
         birth_date=birth_date,
         birth_time=birth_time,
         timezone=timezone,
         levels=levels,
+        subject=subject,
     )
 
 
 @tool
-def compute_nakshatra_details(natal_chart: dict | None = None) -> dict:
-    """Janma Nakshatra deep analysis from the natal Moon. ``natal_chart`` may be omitted — the user's preloaded chart is substituted automatically."""
-    return R.compute_nakshatra_details_resolved(natal_chart=natal_chart)
+def compute_nakshatra_details(
+    natal_chart: dict | None = None,
+    subject: str | None = None,
+) -> dict:
+    """Janma Nakshatra deep analysis from the natal Moon. ``natal_chart`` may be omitted — by default the user's own chart is used. To analyse a saved family member's nakshatra, pass ``subject="<relationship-or-name>"``."""
+    return R.compute_nakshatra_details_resolved(
+        natal_chart=natal_chart, subject=subject
+    )
 
 
 @tool
 def check_sade_sati(
     natal_chart: dict | None = None,
     as_of: str | None = None,
+    subject: str | None = None,
 ) -> dict:
-    """Check Sade Sati / Ashtama Shani status against the natal Moon. ``natal_chart`` may be omitted — the user's preloaded chart is substituted automatically."""
-    return R.check_sade_sati_resolved(natal_chart=natal_chart, as_of=as_of)
+    """Check Sade Sati / Ashtama Shani status against the natal Moon. ``natal_chart`` may be omitted — by default the user's own chart is used. To check it for a saved family member, pass ``subject="<relationship-or-name>"``."""
+    return R.check_sade_sati_resolved(
+        natal_chart=natal_chart, as_of=as_of, subject=subject
+    )
 
 
 @tool
@@ -99,9 +109,12 @@ async def kundali_milan(
 def render_chart_svg(
     natal_chart: dict | None = None,
     style: str | None = None,
+    subject: str | None = None,
 ) -> str:
-    """Render the user's natal chart as a visual SVG card. The SVG is sent to the UI as a separate ``chart_svg`` artifact — do NOT paste the returned string back into your reply, just acknowledge briefly. ``natal_chart`` may be omitted (user's preloaded chart used). ``style`` may be omitted (user's chart_format preference used) or set explicitly to ``south_indian`` or ``north_indian``."""
-    return R.render_chart_svg_resolved(natal_chart=natal_chart, style=style)
+    """Render a natal chart as a visual SVG card. The SVG is sent to the UI as a separate ``chart_svg`` artifact — do NOT paste the returned string back into your reply, just acknowledge briefly. ``natal_chart`` may be omitted; by default the seeker's own chart is rendered. To render a saved family member's chart (mother, spouse, child, sibling, named person), pass ``subject="<relationship-or-name>"``. ``style`` may be omitted (user's chart_format preference used) or set explicitly to ``south_indian`` or ``north_indian``."""
+    return R.render_chart_svg_resolved(
+        natal_chart=natal_chart, style=style, subject=subject
+    )
 
 
 @tool
@@ -128,9 +141,12 @@ def compute_muhurta(
 def get_daily_transits(
     natal_chart: dict | None = None,
     as_of: str | None = None,
+    subject: str | None = None,
 ) -> dict:
-    """Current planetary transits relative to a natal chart. ``natal_chart`` may be omitted — the user's preloaded chart is substituted automatically."""
-    return R.get_daily_transits_resolved(natal_chart=natal_chart, as_of=as_of)
+    """Current planetary transits relative to a natal chart. ``natal_chart`` may be omitted — by default the seeker's own chart is used. To compute transits for a saved family member, pass ``subject="<relationship-or-name>"``."""
+    return R.get_daily_transits_resolved(
+        natal_chart=natal_chart, as_of=as_of, subject=subject
+    )
 
 
 @tool

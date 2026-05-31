@@ -91,6 +91,23 @@ async def _load_self_profile(user_id: str):
     )
 
 
+async def _load_family_rows(user_id: str, self_profile_id: str | None) -> list[dict]:
+    """
+    Full family-vault rows for binding into the request scope. The
+    resolvers consume these to map ``subject="<relationship-or-name>"``
+    arguments to a precomputed chart + birth details. Excludes the
+    seeker's own profile.
+    """
+    try:
+        rows = await get_profiles_by_user(user_id)
+    except Exception:
+        return []
+    return [
+        row for row in (rows or [])
+        if not (self_profile_id and row.get("id") == self_profile_id)
+    ]
+
+
 async def _load_family_summary(user_id: str, self_profile_id: str | None) -> list[dict]:
     """List of {id, name, relationship, has_chart} for every saved profile (excluding self)."""
     try:
@@ -343,6 +360,7 @@ async def send_message(
     language = body.language or user.get("default_language") or "en"
     natal_chart, active_dashas, self_profile_id, self_profile = await _load_self_profile(user["id"])
     family_summary = await _load_family_summary(user["id"], self_profile_id)
+    family_rows = await _load_family_rows(user["id"], self_profile_id)
     self_birth = _user_birth_payload(self_profile)
     residence = _user_residence_payload(user)
 
@@ -382,6 +400,9 @@ async def send_message(
         user_id=user["id"],
         natal_chart=natal_chart,
         chart_format=user.get("chart_format") or "south_indian",
+        residence=residence,
+        self_birth=self_birth,
+        family_rows=family_rows,
     ):
         result = await _run_turn(user_id=user["id"], initial=initial, config=config)
 

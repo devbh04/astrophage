@@ -106,20 +106,32 @@ def _function_declarations() -> list[dict]:
         },
         {
             "name": "compute_dasha_periods",
-            "description": "Vimshottari Dasha timeline for the seeker. Call with no arguments — chart and birth details are auto-filled.",
-            "parameters": {"type": "OBJECT", "properties": {"levels": {"type": "INTEGER"}}},
+            "description": "Vimshottari Dasha timeline. Default subject is the seeker (call with no arguments). To compute a saved family member's dasha, pass ``subject`` with the relationship (e.g. ``subject=\"mother\"``) or name (``subject=\"Riya\"``).",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "levels": {"type": "INTEGER"},
+                    "subject": {"type": "STRING"},
+                },
+            },
         },
         {
             "name": "compute_nakshatra_details",
-            "description": "Janma Nakshatra deep-dive for the seeker. Call with no arguments.",
-            "parameters": {"type": "OBJECT", "properties": {}},
+            "description": "Janma Nakshatra deep-dive. Default subject is the seeker (call with no arguments). To analyse a saved family member's nakshatra, pass ``subject`` with their relationship or name.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {"subject": {"type": "STRING"}},
+            },
         },
         {
             "name": "check_sade_sati",
-            "description": "Sade Sati / Ashtama Shani status for the seeker. Call with no arguments unless the seeker names a specific date.",
+            "description": "Sade Sati / Ashtama Shani status. Default subject is the seeker (call with no arguments unless the seeker names a specific date). To check it for a saved family member, pass ``subject`` with their relationship or name.",
             "parameters": {
                 "type": "OBJECT",
-                "properties": {"as_of": {"type": "STRING"}},
+                "properties": {
+                    "as_of": {"type": "STRING"},
+                    "subject": {"type": "STRING"},
+                },
             },
         },
         {
@@ -160,10 +172,13 @@ def _function_declarations() -> list[dict]:
         },
         {
             "name": "render_chart_svg",
-            "description": "Display the seeker's natal chart as a visual card AND a planets-table card. Call with no arguments. Style defaults to the seeker's preference. After calling, briefly tell the seeker the chart is shown.",
+            "description": "Display a natal chart as a visual card AND a planets-table card. Default subject is the seeker (call with no arguments). To render a saved family member's chart, pass ``subject`` with their relationship (``subject=\"mother\"``) or name (``subject=\"Riya\"``). Style defaults to the seeker's preference. After calling, briefly tell the seeker the chart is shown.",
             "parameters": {
                 "type": "OBJECT",
-                "properties": {"style": {"type": "STRING"}},
+                "properties": {
+                    "style": {"type": "STRING"},
+                    "subject": {"type": "STRING"},
+                },
             },
         },
         {
@@ -180,10 +195,13 @@ def _function_declarations() -> list[dict]:
         },
         {
             "name": "get_daily_transits",
-            "description": "Today's transits relative to the seeker's chart. Call with no arguments unless the seeker names a date.",
+            "description": "Today's transits relative to a chart. Default subject is the seeker (call with no arguments unless the seeker names a date). To compute transits for a saved family member, pass ``subject`` with their relationship or name.",
             "parameters": {
                 "type": "OBJECT",
-                "properties": {"as_of": {"type": "STRING"}},
+                "properties": {
+                    "as_of": {"type": "STRING"},
+                    "subject": {"type": "STRING"},
+                },
             },
         },
         {
@@ -228,6 +246,13 @@ TOOL USAGE — call tools with NO arguments wherever possible:
 - "Show my chart" / "show my birth chart" / "show me my kundli": call ``render_chart_svg`` with no arguments. The chart and a planets table will appear on screen; you just say "Here is your chart…" in 1-2 sentences.
 - "Today's panchang": call ``get_panchang`` with no arguments.
 - Only pass ``date`` or place arguments when the seeker explicitly names a different date or place.
+
+FAMILY-MEMBER QUERIES (CRITICAL):
+- When the seeker asks about a saved family member ("show my mother's chart", "Priya's dasha", "my husband's nakshatra"), pass ``subject="<relationship-or-name>"`` to the chart tool. The system substitutes the saved chart and birth details automatically.
+- Do NOT call ``get_family_profile`` first and then thread a chart back — that round-trip routinely fails. Just pass ``subject`` directly.
+- Examples: ``render_chart_svg(subject="mother")``, ``compute_dasha_periods(subject="Priya")``, ``check_sade_sati(subject="father")``, ``get_daily_transits(subject="brother")``.
+- For ``kundali_milan`` pass ``girl_chart="<name-or-relationship>"`` — never embed dates or addresses inside the string.
+- If the named person is NOT in the FAMILY VAULT block above, gently tell the seeker to add them in the Family page first; do not guess their birth details.
 
 Speak in: {language}.
 
@@ -689,6 +714,7 @@ async def voice_socket(websocket: WebSocket):
                                         chart_format=chart_format,
                                         residence=residence_payload,
                                         self_birth=self_birth_payload,
+                                        family_rows=family,
                                     ):
                                         res = await _execute_tool_call(call)
                                     if res["name"] == "render_chart_svg":
@@ -701,15 +727,24 @@ async def voice_socket(websocket: WebSocket):
                                             except Exception:
                                                 stop_event.set()
                                                 return
-                                        # ALSO send the birth_chart card so the
-                                        # seeker sees the planet table next to
-                                        # the visual chart in voice mode.
-                                        if natal_chart:
+                                        # ALSO send the birth_chart card so
+                                        # the seeker sees the planet table
+                                        # next to the visual chart. Prefer
+                                        # the chart that was *actually*
+                                        # rendered (could be a family
+                                        # member's chart when the LLM
+                                        # passed ``subject=...``); fall
+                                        # back to the seeker's bound
+                                        # chart when the scratch slot is
+                                        # empty.
+                                        from app.tools._resolvers import get_last_rendered_chart
+                                        chart_for_card = get_last_rendered_chart() or natal_chart
+                                        if chart_for_card:
                                             try:
                                                 await websocket.send_json({
                                                     "type": "structured_card",
                                                     "card_type": "birth_chart",
-                                                    "data": natal_chart,
+                                                    "data": chart_for_card,
                                                 })
                                             except Exception:
                                                 stop_event.set()

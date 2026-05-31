@@ -36,6 +36,14 @@ _current_residence: ContextVar[dict | None] = ContextVar(
 _current_self_birth: ContextVar[dict | None] = ContextVar(
     "astrophage_self_birth", default=None
 )
+# List of saved family-vault rows (excluding the seeker's own profile).
+# Bound at request boot so the resolvers can look up "mother", "spouse",
+# "Riya" etc. without a fresh DB round-trip mid-tool-call. Each entry is
+# the raw profile row: ``{id, name, relationship, birth_date,
+# birth_time, place_name, lat, lng, timezone, computed_chart, ...}``.
+_current_family_rows: ContextVar[list[dict] | None] = ContextVar(
+    "astrophage_family_rows", default=None
+)
 # Per-request scratch slot for the most recent ad-hoc chart the model
 # computed in this turn (e.g. a partner whose details the user dictated
 # inline but who isn't in the family vault yet). ``kundali_milan`` falls
@@ -64,6 +72,11 @@ def get_current_residence() -> dict | None:
 
 def get_current_self_birth() -> dict | None:
     return _current_self_birth.get()
+
+
+def get_current_family_rows() -> list[dict]:
+    """Saved family-vault rows for the active request (empty list if none)."""
+    return _current_family_rows.get() or []
 
 
 def get_last_computed_chart() -> dict | None:
@@ -101,6 +114,7 @@ def set_request_context(
     chart_format: str = "south_indian",
     residence: dict | None = None,
     self_birth: dict | None = None,
+    family_rows: list[dict] | None = None,
 ) -> Iterator[None]:
     """Bind everything tools may need from the request, atomically."""
     t1 = _current_user_id.set(user_id)
@@ -108,9 +122,15 @@ def set_request_context(
     t3 = _current_chart_format.set(chart_format or "south_indian")
     t4 = _current_residence.set(residence or None)
     t5 = _current_self_birth.set(self_birth or None)
+    t6 = _current_family_rows.set(family_rows or None)
+    # Reset the scratch chart slot every request so a stale chart from a
+    # previous turn cannot leak into this one's kundali fallback.
+    t7 = _last_computed_chart.set(None)
     try:
         yield
     finally:
+        _last_computed_chart.reset(t7)
+        _current_family_rows.reset(t6)
         _current_self_birth.reset(t5)
         _current_residence.reset(t4)
         _current_chart_format.reset(t3)
@@ -124,6 +144,7 @@ __all__ = [
     "get_current_chart_format",
     "get_current_residence",
     "get_current_self_birth",
+    "get_current_family_rows",
     "get_last_computed_chart",
     "set_current_user_id",
     "set_last_computed_chart",
