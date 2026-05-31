@@ -17,12 +17,15 @@ import argparse
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
 from app.eval.assertions import run_assertions
 from app.eval.scorecard import (
     append_row,
+    append_run_log,
+    estimate_cost_usd,
     markdown_summary,
     now_run_id,
     now_timestamp,
@@ -66,7 +69,12 @@ async def _run_case(case: dict, judge: bool, agent_graph: Any) -> dict:
     tool_sequence: list[str] = []
     final_text = ""
     node_visits = 0
+    input_tokens = 0
+    output_tokens = 0
+    failure = False
+    failure_reason = ""
 
+    started = time.monotonic()
     try:
         async for event in agent_graph.astream_events(state, config=config, version="v2"):
             etype = event.get("event")
@@ -80,11 +88,33 @@ async def _run_case(case: dict, judge: bool, agent_graph: Any) -> dict:
                 output = data.get("output") or {}
                 if output.get("draft_response"):
                     final_text = output["draft_response"]
+            # Sum token usage across every LLM call in the turn. Gemini
+            # surfaces this on AIMessage.usage_metadata when the LangChain
+            # Google client populates it (Vertex + dev API both do).
+            if etype == "on_llm_end":
+                output = data.get("output")
+                try:
+                    msg = None
+                    if output is not None:
+                        # ChatResult has generations[0][0].message
+                        gens = getattr(output, "generations", None)
+                        if gens and gens[0]:
+                            msg = getattr(gens[0][0], "message", None)
+                    if msg is not None:
+                        usage = getattr(msg, "usage_metadata", None)
+                        if isinstance(usage, dict):
+                            input_tokens += int(usage.get("input_tokens") or 0)
+                            output_tokens += int(usage.get("output_tokens") or 0)
+                except Exception:
+                    pass
     except Exception as exc:
+        failure = True
+        failure_reason = str(exc)[:200]
         final_text = f"[error] {exc}"
+    elapsed_ms = int((time.monotonic() - started) * 1000)
 
     detected_language = case.get("expected_language") or "en"
-    if final_text:
+    if final_text and not failure:
         try:
             detected_language = detect(final_text)
         except Exception:
@@ -96,6 +126,13 @@ async def _run_case(case: dict, judge: bool, agent_graph: Any) -> dict:
         "final_response": final_text,
         "detected_language": detected_language,
         "node_visits": node_visits,
+        "latency_ms": elapsed_ms,
+        "tool_calls": len(tool_sequence),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "est_cost_usd": estimate_cost_usd(input_tokens, output_tokens),
+        "failure": failure,
+        "failure_reason": failure_reason,
     }
     assertions = run_assertions(case, run_record)
     deterministic_pass = sum(1 for a in assertions if a["passed"]) / max(1, len(assertions))
@@ -145,6 +182,14 @@ async def run_eval(
             if jvals:
                 judge_avg = f"{sum(jvals) / len(jvals):.2f}"
         passed_all = all(a["passed"] for a in record["assertions"])
+        # Compose a comments column: judge comments first, failure
+        # reason if the run blew up. Both are run through redaction in
+        # ``append_row``.
+        comments_parts = []
+        if record.get("judge", {}).get("comments"):
+            comments_parts.append(record["judge"]["comments"])
+        if record.get("failure_reason"):
+            comments_parts.append(f"failure:{record['failure_reason']}")
         row = {
             "run_id": run_id,
             "timestamp": now_timestamp(),
@@ -154,10 +199,41 @@ async def run_eval(
             "passed": str(passed_all).lower(),
             "deterministic_score": record.get("deterministic_score"),
             "judge_avg": judge_avg,
-            "comments": record.get("judge", {}).get("comments", "") if record.get("judge") else "",
+            "latency_ms": record.get("latency_ms"),
+            "tool_calls": record.get("tool_calls"),
+            "input_tokens": record.get("input_tokens"),
+            "output_tokens": record.get("output_tokens"),
+            "est_cost_usd": f"{record.get('est_cost_usd', 0):.6f}",
+            "failure": str(record.get("failure", False)).lower(),
+            "comments": " | ".join(comments_parts),
         }
         rows.append(row)
         append_row(scorecard_path, row)
+
+    # Per-run aggregate: written to runs.md so historical drift between
+    # runs is visible at a glance without having to parse the CSV.
+    append_run_log(
+        out_dir / "runs.md",
+        run_id=run_id,
+        timestamp=now_timestamp(),
+        rows=rows,
+    )
+
+    # Persist the full records snapshot so the judge-audit helper can
+    # spot-check verdicts later. Overwrites every run on purpose; older
+    # snapshots are still present in scorecard.csv if needed.
+    try:
+        snapshot = out_dir / "last_run.json"
+        with snapshot.open("w", encoding="utf-8") as fh:
+            json.dump(
+                {"run_id": run_id, "records": records},
+                fh,
+                ensure_ascii=False,
+                default=str,
+                indent=2,
+            )
+    except Exception:
+        pass
 
     print(markdown_summary(rows))
     return {"run_id": run_id, "records": records, "rows": rows}
