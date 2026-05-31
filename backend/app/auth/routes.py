@@ -27,8 +27,8 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         key="astrophage_session",
         value=token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=False,
+        samesite="lax",
         max_age=7 * 24 * 3600,
         path="/",
     )
@@ -83,12 +83,7 @@ async def login(body: LoginRequest, response: Response):
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie(
-        key="astrophage_session",
-        path="/",
-        secure=True,
-        samesite="none",
-    )
+    response.delete_cookie(key="astrophage_session", path="/")
     return {"message": "Logged out"}
 
 
