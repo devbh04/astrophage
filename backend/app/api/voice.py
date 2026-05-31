@@ -141,10 +141,10 @@ def _function_declarations() -> list[dict]:
         },
         {
             "name": "kundali_milan",
-            "description": "Ashtakoota compatibility + Mangal Dosha. The seeker's chart is auto-filled as the boy. Provide ``girl_chart`` from a ``get_family_profile`` lookup.",
+            "description": "Ashtakoota compatibility + Mangal Dosha. The seeker's chart is auto-filled as the boy. ``girl_chart`` accepts either a full chart object OR a string with the partner's NAME or relationship (e.g. ``girl_chart=\"Priya\"`` or ``girl_chart=\"spouse\"``) — the system looks them up in the family vault. Prefer the string form unless you already have the full chart in hand.",
             "parameters": {
                 "type": "OBJECT",
-                "properties": {"girl_chart": {"type": "OBJECT"}},
+                "properties": {"girl_chart": {"type": "STRING"}},
             },
         },
         {

@@ -37,10 +37,35 @@ interface Props {
 }
 
 export default function KundaliMilanCard({ data, fullWidth }: Props) {
+  // Defensive: if the tool errored or returned a partial payload, render a
+  // friendly placeholder instead of crashing the whole page on
+  // ``Object.entries(undefined)``.
+  if (!data || typeof data !== "object" || !data.scores) {
+    return (
+      <CardShell
+        title="Kundali Milan"
+        badge="incomplete"
+        icon={<Heart size={16} />}
+        accent="rose"
+        fullWidth={fullWidth}
+      >
+        <p className="font-body-md text-sm text-on-surface-variant">
+          Could not compute the match. Please share the partner&apos;s full
+          birth details (date, time, place) and try again.
+        </p>
+      </CardShell>
+    );
+  }
+
+  const total = data.total ?? 0;
+  const verdict = data.verdict || "average";
+  const summary = data.summary || "";
+  const mangal = data.mangal_dosha;
+  const warnings = data.warnings || [];
   return (
     <CardShell
       title="Kundali Milan"
-      badge={data.verdict}
+      badge={verdict}
       icon={<Heart size={16} />}
       accent="rose"
       fullWidth={fullWidth}
@@ -48,21 +73,23 @@ export default function KundaliMilanCard({ data, fullWidth }: Props) {
       <div className="flex items-center gap-4 mb-5">
         <div
           className={`w-24 h-24 rounded-full flex flex-col items-center justify-center wobbly-border-sm ${
-            VERDICT_TONE[data.verdict] || ""
+            VERDICT_TONE[verdict] || ""
           }`}
         >
-          <div className="font-headline-md text-2xl">{data.total}</div>
+          <div className="font-headline-md text-2xl">{total}</div>
           <div className="font-nav-label text-[9px] uppercase tracking-widest opacity-70">
             of 36
           </div>
         </div>
         <div className="flex-1">
           <div className="font-annotation-sm text-2xl text-solar-gold capitalize">
-            {data.verdict}
+            {verdict}
           </div>
-          <p className="font-body-md text-xs text-on-surface-variant mt-1 italic">
-            {data.summary}
-          </p>
+          {summary && (
+            <p className="font-body-md text-xs text-on-surface-variant mt-1 italic">
+              {summary}
+            </p>
+          )}
         </div>
       </div>
 
@@ -70,9 +97,10 @@ export default function KundaliMilanCard({ data, fullWidth }: Props) {
       <div className="space-y-1.5 mb-4">
         {Object.entries(data.scores).map(([key, val]) => {
           const max = KOOTA_MAX[key] || 1;
-          const pct = (val / max) * 100;
-          const isFull = val === max;
-          const isZero = val === 0;
+          const numeric = Number(val) || 0;
+          const pct = Math.min(100, Math.max(0, (numeric / max) * 100));
+          const isFull = numeric === max;
+          const isZero = numeric === 0;
           return (
             <div key={key} className="flex items-center gap-3">
               <div className="w-24 font-nav-label text-[10px] uppercase tracking-widest text-on-surface-variant">
@@ -91,33 +119,35 @@ export default function KundaliMilanCard({ data, fullWidth }: Props) {
                 />
               </div>
               <div className="w-10 text-right font-headline-md text-sm text-primary">
-                {val}/{max}
+                {numeric}/{max}
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <DoshaCell
-          who="Boy"
-          present={data.mangal_dosha.boy.present}
-          cancelled={data.mangal_dosha.boy.cancelled}
-        />
-        <DoshaCell
-          who="Girl"
-          present={data.mangal_dosha.girl.present}
-          cancelled={data.mangal_dosha.girl.cancelled}
-        />
-      </div>
+      {mangal && mangal.boy && mangal.girl && (
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <DoshaCell
+            who="Boy"
+            present={!!mangal.boy.present}
+            cancelled={!!mangal.boy.cancelled}
+          />
+          <DoshaCell
+            who="Girl"
+            present={!!mangal.girl.present}
+            cancelled={!!mangal.girl.cancelled}
+          />
+        </div>
+      )}
 
-      {data.warnings?.length > 0 && (
+      {warnings.length > 0 && (
         <div className="bg-amber-500/10 wobbly-border-sm px-3 py-2">
           <div className="font-nav-label text-[9px] uppercase tracking-widest text-amber-700 mb-1">
             Warnings
           </div>
           <ul className="space-y-0.5">
-            {data.warnings.map((w, i) => (
+            {warnings.map((w, i) => (
               <li
                 key={i}
                 className="font-body-md text-[11px] text-on-surface-variant"

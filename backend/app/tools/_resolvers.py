@@ -192,11 +192,54 @@ async def knowledge_lookup_resolved(query: str, top_k: int = 5) -> list:
     return await _knowledge_lookup(query, top_k=top_k)
 
 
-def kundali_milan_resolved(
-    boy_chart: dict | None = None,
-    girl_chart: dict | None = None,
+async def kundali_milan_resolved(
+    boy_chart: dict | str | None = None,
+    girl_chart: dict | str | None = None,
 ) -> dict:
-    return _kundali_milan(resolve_chart(boy_chart), girl_chart or {})
+    """
+    Compatibility scoring. Each chart slot may be:
+    - a full chart dict
+    - a string (name OR relationship) — looked up in the user's family vault
+    - omitted (the user's preloaded chart fills the boy slot)
+
+    The voice model in particular often passes a name as ``girl_chart``
+    rather than threading the full chart dict back through itself; this
+    resolver handles that gracefully so the LLM doesn't have to.
+    """
+    async def _resolve_slot(value: Any) -> dict:
+        if isinstance(value, dict) and value:
+            return value
+        if isinstance(value, str) and value.strip():
+            # Try as relationship first, then as name.
+            from app.tools.family_profile import get_family_profile as _gfp
+
+            for kwargs in (
+                {"relationship": value.strip()},
+                {"name": value.strip()},
+            ):
+                lookup = await _gfp(**kwargs)
+                if lookup.get("found") and lookup.get("profile"):
+                    chart = lookup["profile"].get("natal_chart")
+                    if isinstance(chart, dict) and chart.get("planets"):
+                        return chart
+        return {}
+
+    boy = await _resolve_slot(boy_chart)
+    if not boy:
+        boy = resolve_chart(None)  # falls back to the user's preloaded chart
+    girl = await _resolve_slot(girl_chart)
+    # Guard against missing/incomplete charts so the frontend can show a
+    # friendly placeholder instead of crashing on undefined fields.
+    if not (isinstance(boy, dict) and boy.get("planets")):
+        return {"error": "Boy chart unavailable. Provide it explicitly or "
+                          "ensure the seeker's chart is loaded."}
+    if not (isinstance(girl, dict) and girl.get("planets")):
+        return {"error": "Girl chart unavailable. Add the partner to the "
+                          "family vault or provide their full birth details."}
+    try:
+        return _kundali_milan(boy, girl)
+    except Exception as exc:
+        return {"error": f"Could not compute the match: {exc}"}
 
 
 def render_chart_svg_resolved(

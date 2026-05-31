@@ -87,12 +87,12 @@ async def knowledge_lookup(query: str, top_k: int = 5) -> list:
 
 
 @tool
-def kundali_milan(
-    boy_chart: dict | None = None,
-    girl_chart: dict | None = None,
+async def kundali_milan(
+    boy_chart: dict | str | None = None,
+    girl_chart: dict | str | None = None,
 ) -> dict:
-    """Ashtakoota 8-fold compatibility scoring + Mangal Dosha analysis. If the boy is the user, you may omit ``boy_chart`` — the user's preloaded chart is substituted. ``girl_chart`` should come from a ``get_family_profile`` lookup."""
-    return R.kundali_milan_resolved(boy_chart=boy_chart, girl_chart=girl_chart)
+    """Ashtakoota 8-fold compatibility scoring + Mangal Dosha analysis. ``boy_chart`` may be omitted to use the seeker's preloaded chart. Either slot may be the FULL chart dict OR a string with the partner's name/relationship — when a string is given, the system looks them up in the family vault and uses their precomputed chart."""
+    return await R.kundali_milan_resolved(boy_chart=boy_chart, girl_chart=girl_chart)
 
 
 @tool
