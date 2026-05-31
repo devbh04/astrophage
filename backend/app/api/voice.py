@@ -229,7 +229,7 @@ def _function_declarations() -> list[dict]:
 # ── System instruction (mirrors the text reasoning prompt, voice tone) ──
 
 
-VOICE_SYSTEM_INSTRUCTION_TEMPLATE = """You are Astrophage — a warm, grounded Vedic astrologer who is now speaking aloud with the seeker.
+VOICE_SYSTEM_INSTRUCTION_TEMPLATE = """You are Astrophage [female] — a warm, grounded Vedic astrologer who is now speaking aloud with the seeker.
 
 Voice rules (CRITICAL because this is spoken):
 - Speak naturally, unhurried, like a thoughtful family astrologer.

@@ -1,206 +1,410 @@
-# AstroAgent 🌟
+<p align="center">
+  <img src="https://astrophageai.vercel.app/logo.png" alt="Astrophage" width="140" />
+</p>
 
-<div align="center">
+<h1 align="center">Astrophage</h1>
 
-<img src="https://astrophageai.vercel.app/logo.png" alt="AstroAgent Logo" width="200" height="200" />
+<p align="center">
+  <strong>AI Vedic Astrology Assistant — Voice, Chat, Multilingual</strong>
+</p>
 
-**An AI Vedic Astrology Assistant with Voice & Multilingual Support**
+<p align="center">
+  <a href="https://astrophageai.vercel.app"><img src="https://img.shields.io/badge/Live_Demo-astrophageai.vercel.app-8B5CF6?style=for-the-badge&logo=vercel" alt="Live Demo" /></a>
+  <a href="https://youtube.com/watch?v=YOUR_VIDEO_ID"><img src="https://img.shields.io/badge/YouTube-Watch_Demo-FF0000?style=for-the-badge&logo=youtube" alt="YouTube" /></a>
+</p>
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-AstrophageAI-8B5CF6?style=for-the-badge&logo=vercel)](https://astrophageai.vercel.app)
-[![YouTube Demo](https://img.shields.io/badge/YouTube_Demo-Watch-FF0000?style=for-the-badge&logo=youtube)](https://youtube.com/watch?v=YOUR_VIDEO_ID)
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python)](https://python.org)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=next.js)](https://nextjs.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/Next.js-15-000000?logo=next.js" />
+  <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi" />
+  <img src="https://img.shields.io/badge/Gemini-2.5_Flash-4285F4?logo=google" />
+  <img src="https://img.shields.io/badge/LangGraph-Agent-FF6F00" />
+</p>
 
-*Speak with an AI astrologer in 6 languages • Compute Vedic charts • Find auspicious moments • Check compatibility*
+---
 
-</div>
+Astrophage is a full-stack AI astrologer that speaks 6 languages, computes real Vedic charts using Swiss Ephemeris, and converses in both text and voice. It remembers your birth details, your family, and your residence — so you never have to repeat yourself.
+
+> **Try it live** → [astrophageai.vercel.app](https://astrophageai.vercel.app)
+
+---
+
+## Table of Contents
+
+- [Features](#-features)
+- [Agent Architecture](#-agent-architecture)
+- [Tech Stack](#-tech-stack)
+- [Quick Start](#-quick-start)
+- [Evaluation System](#-evaluation-system)
+- [Project Structure](#-project-structure)
+- [Design Principles](#-design-principles)
+- [Links](#-links)
+
+---
 
 ## ✨ Features
 
-### 🤖 **Intelligent Agent**
-- **LangGraph-powered** state machine with language detection, sensitivity filtering, and response editing
-- **Multilingual support** (English, Hindi, Marathi, Gujarati, Tamil, Kannada) with automatic detection
-- **Context-aware tools** that remember your birth details, residence, and family members
-- **Warm, culturally-appropriate** responses tuned by a second-pass editor
+### Chat Mode
+- Conversational Vedic astrology with structured UI cards (charts, panchang, dasha timelines, compatibility scores)
+- Markdown-rendered responses with tables, blockquotes, and warm astrologer tone
+- Tool activity indicators streamed in real-time via WebSocket event bus
+- Conversation persistence — cards and tool outputs survive page refresh
 
-### 🎤 **Voice Mode**
-- **Bidirectional voice chat** with `gemini-live-2.5-flash-native-audio`
-- **Real-time audio processing** (16kHz input → 24kHz output)
-- **Visual voice orb** with 64 radial bars driven by AnalyserNode
-- **Seamless tool integration** - ask aloud, see cards appear
+### Voice Mode
+- Bidirectional audio with `gemini-live-2.5-flash-native-audio`
+- AudioWorklet downsamples mic to 16 kHz PCM16; playback at 24 kHz gapless
+- Visual voice orb with 64 radial bars driven by AnalyserNode
+- Cards announce themselves ("Here is your panchang") before rendering
+- Multi-turn sessions — no reconnect needed between questions
 
-### 🔮 **Vedic Tools Suite**
-| Tool | Purpose | Example |
-|------|---------|---------|
-| **Birth Chart** | Full Vedic chart from birth details | "Show my chart" |
-| **Vimshottari Dasha** | Planetary period timeline (120+ years) | "What's my current dasha?" |
-| **Janma Nakshatra** | Birth star deep analysis | "Tell me about my nakshatra" |
-| **Sade Sati** | Saturn-over-Moon phases | "Am I in Sade Sati?" |
-| **Panchang** | Five limbs + Rahu Kaal/Yamaganda | "Today's panchang" |
-| **Kundali Milan** | Ashtakoota 8-fold compatibility | "Check compatibility with Priya" |
-| **Muhurta Finder** | Auspicious 30-minute windows | "Find wedding muhurta next week" |
-| **Daily Transits** | Current transits vs natal chart | "Today's transits for me" |
-| **Current Sky** | Real-time planetary positions | "What's in the sky now?" |
-| **Knowledge Lookup** | Curated Vedic knowledge base | "Tell me about Saturn's nature" |
+### Multilingual
+- English, Hindi, Marathi, Gujarati, Tamil, Kannada
+- Language directive injected into the freshest user-turn tokens (where Gemini weighs them highest)
+- Sticky across turns — switch once in Settings, every reply follows
 
-### 👨‍👩‍👧‍👦 **Family Vault**
-- **Save profiles** for family members (mother, father, spouse, children)
-- **Automatic chart resolution** - "show my mother's chart" just works
-- **Subject-aware tools** - all chart tools accept `subject="<name-or-relationship>"`
-- **Residence-aware** - panchang always uses your current residence coords
+### Vedic Tools (12 tools, single registry)
 
-### 📊 **Professional Evaluation**
-- **30-case golden set** covering valid charts, Vedic queries, multilingual cases, graceful failures, adversarial prompts
-- **Deterministic assertions** + LLM-as-judge with 1–5 rubric
-- **Cost/latency/reliability metrics** (p50/p95 latency, token counts, USD cost, failure rate)
-- **One-command runner** with scorecard CSV + run history markdown
+| Tool | What it does |
+|------|-------------|
+| `compute_birth_chart` | Full sidereal Lahiri chart (9 grahas, 12 houses, nakshatras) |
+| `render_chart_svg` | Pure-Python SVG in North or South Indian style |
+| `compute_dasha_periods` | Vimshottari Maha + Antar + Pratyantar timeline |
+| `compute_nakshatra_details` | Janma nakshatra deep-dive (deity, gana, yoni, nadi) |
+| `check_sade_sati` | Saturn-over-Moon phase detection |
+| `get_panchang` | Tithi, Nakshatra, Yoga, Karana, sunrise/sunset, Rahu Kaal |
+| `kundali_milan` | Ashtakoota 8-fold compatibility + Mangal Dosha |
+| `compute_muhurta` | Top 3 auspicious 30-minute windows for a purpose |
+| `get_daily_transits` | Current transits relative to natal chart |
+| `get_current_sky` | Generic planetary snapshot |
+| `knowledge_lookup` | RAG over curated Vedic knowledge base (Qdrant + gemini-embedding-001) |
+| `get_family_profile` | Look up saved family members by name or relationship |
+
+### Family Vault
+- Save birth profiles for family members
+- `subject="mother"` on any chart tool renders their chart, not yours
+- Kundali Milan resolves partner by name from the vault automatically
+
+### Personalization
+- Self birth details + residence saved in Settings
+- Panchang always uses residence coords (never the place named in the message)
+- Chart format preference (North/South Indian) persisted per user
+
+---
+
+## 🧠 Agent Architecture
+
+The agent is a **LangGraph** state machine optimized for low latency (1–2 LLM calls per turn instead of 4–5 in the original design).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        USER MESSAGE                              │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │     REASONING       │ ← Gemini 2.5 Flash
+                    │  (system prompt +   │   with 12 tools bound
+                    │   tools + context)  │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────┴──────────┐
+                    │                     │
+              has tool_calls?       no tool_calls
+                    │                     │
+                    ▼                     ▼
+         ┌──────────────────┐   ┌──────────────────┐
+         │  TOOL EXECUTOR   │   │     RESPONSE     │
+         │                  │   │  (draft → final) │
+         │ • Runs tools via │   └────────┬─────────┘
+         │   TOOL_REGISTRY  │            │
+         │ • Emits cards    │            ▼
+         │ • Emits SVG      │        END (reply
+         │ • Streams events │         to user)
+         └────────┬─────────┘
+                  │
+                  │ ToolMessages appended
+                  │
+                  └──────► back to REASONING
+                           (loop until no more tool_calls)
+```
+
+**Key design choices:**
+
+- **No separate router/editor/language-detector nodes** — the reasoning prompt handles all of this in a single LLM call, cutting latency from 15–30s to 3–8s.
+- **Resolver-aware tool registry** — tools accept minimal args; the resolver fills in the user's chart, residence, birth details, and family vault from request-scoped ContextVars.
+- **Subject resolution** — every chart tool accepts `subject="<name-or-relationship>"` so the model never needs to call `get_family_profile` first and thread chart dicts back.
+- **Voice mode** uses the same `TOOL_REGISTRY` but with a separate Live API session (`gemini-live-2.5-flash-native-audio`) that handles VAD, speech recognition, reasoning, and voice synthesis natively.
+
+---
+
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **LLM** | Gemini 2.5 Flash (chat) · Gemini Live 2.5 Flash Native Audio (voice) |
+| **Embeddings** | `gemini-embedding-001` (768-dim, L2-normalized) |
+| **Agent Framework** | LangGraph + LangChain |
+| **Backend** | FastAPI · Python 3.12 · uv |
+| **Ephemeris** | pyswisseph (Lahiri ayanamsa) |
+| **Vector DB** | Qdrant Cloud |
+| **Relational DB** | Supabase (PostgreSQL) |
+| **Auth** | Custom JWT + HttpOnly cookies (cross-origin via `?token=` fallback) |
+| **Frontend** | Next.js 15 · React 19 · Tailwind CSS v4 · Zustand |
+| **Voice UI** | Web Audio API · AudioWorklet · AnalyserNode |
+| **Deployment** | Vercel (frontend) · HuggingFace Spaces / Cloud Run (backend) |
+
+---
 
 ## 🚀 Quick Start
 
-### 1. Backend Setup
+### Prerequisites
+
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Node.js 20+ and pnpm
+- A Google Cloud project with Gemini API enabled (or a `GOOGLE_API_KEY`)
+- Supabase project (free tier works)
+- Qdrant Cloud cluster (free tier works)
+
+### 1. Clone
+
+```bash
+git clone https://github.com/devbh04/astrophage.git
+cd astrophage
+```
+
+### 2. Backend
+
 ```bash
 cd backend
 
-# Install dependencies (uv creates .venv automatically)
+# Install all Python dependencies
 uv sync
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your:
-# - GOOGLE_API_KEY (Gemini 2.5 Flash + text-embedding-004)
-# - SUPABASE_URL, SUPABASE_KEY, SUPABASE_JWT_SECRET
-# - QDRANT_URL, QDRANT_API_KEY
-# - JWT_SECRET (any strong random string)
-
-# Run dev server
-uv run uvicorn app.main:app --reload --port 7860
 ```
 
-### 2. Database Migration
-In your Supabase SQL editor, paste:
+Fill in `.env`:
+
+```env
+GOOGLE_API_KEY=your-gemini-api-key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+QDRANT_URL=https://your-cluster.qdrant.io
+QDRANT_API_KEY=your-qdrant-key
+JWT_SECRET=any-strong-random-string
+CORS_ORIGINS=http://localhost:3000
+```
+
+Run the database migration in Supabase SQL editor:
 ```sql
--- From: backend/supabase/migrations/001_initial_schema.sql
--- Creates users, birth_profiles, conversations, messages tables
--- Adds residence_* columns to users table
+-- Paste contents of backend/supabase/migrations/001_initial_schema.sql
 ```
 
-### 3. Knowledge Base Ingestion
+Ingest the knowledge base:
 ```bash
-# Dry run first
-uv run python scripts/ingest_knowledge.py --dry-run
-
-# Real ingest (idempotent - reruns are safe)
 uv run python scripts/ingest_knowledge.py
 ```
 
-### 4. Frontend Setup
+Start the dev server:
+```bash
+uv run uvicorn app.main:app --reload --port 7860
+```
+
+### 3. Frontend
+
 ```bash
 cd client
-
-# Install dependencies
 pnpm install
+```
 
-# Run dev server (defaults to http://localhost:3000)
+Create `client/.env.local`:
+```env
+NEXT_PUBLIC_API_URL=http://localhost:7860
+```
+
+Start:
+```bash
 pnpm dev
 ```
 
-Set `NEXT_PUBLIC_API_URL=http://localhost:7860` in `client/.env.local` if needed.
+Open [http://localhost:3000](http://localhost:3000), register an account, add your birth details in Settings, and start chatting.
 
-## 🏗️ Architecture
+### 4. Production (optional)
 
-```
-astrophage/
-├── backend/                    # FastAPI + LangGraph
-│   ├── app/
-│   │   ├── agent/             # LangGraph state machine
-│   │   │   ├── graph.py       # Compiled graph (language → router → reasoning → sensitivity → editor)
-│   │   │   ├── nodes/         # Individual nodes
-│   │   │   └── _user_context.py # Request-scoped ContextVars
-│   │   ├── tools/             # 12 Vedic tools + TOOL_REGISTRY
-│   │   │   └── _resolvers.py  # Single source of truth for tool defaults
-│   │   ├── api/               # REST + WebSocket endpoints
-│   │   │   ├── chat.py        # HTTP chat API
-│   │   │   └── voice.py       # /ws/voice bridge to Gemini Live
-│   │   ├── eval/              # Evaluation harness
-│   │   │   ├── run.py         # One-command runner
-│   │   │   ├── scorecard.py   # CSV + markdown aggregation
-│   │   │   └── judge.py       # LLM-as-judge with rubric
-│   │   └── main.py            # FastAPI app + /ws/{session_id}
-│   ├── eval/golden_set.jsonl  # 30 test cases
-│   └── knowledge_base/        # Curated Vedic markdown
-├── client/                     # Next.js 16 + Tailwind v4
-│   ├── app/(app)/             # App router pages
-│   │   ├── chat/              # Main chat interface
-│   │   ├── family/            # Family vault management
-│   │   ├── calendar/          # Panchang calendar view
-│   │   └── settings/          # Self birth + residence
-│   ├── components/
-│   │   ├── cards/             # 12 structured card types
-│   │   ├── voice/             # VoiceModal + VoiceOrb
-│   │   └── chat/              # MarkdownProse + message bubbles
-│   └── lib/store.ts           # Zustand persistence
-└── README.md                  # This file
+For cross-origin cookie auth between Vercel frontend and a separate backend host:
+
+```env
+# In backend .env
+COOKIE_CROSS_SITE=1
+COOKIE_DOMAIN=.yourdomain.com
+CORS_ORIGINS=https://yourdomain.com
 ```
 
-## 🧪 Evaluation System
-
-AstroAgent ships with a production-grade evaluation harness that implements **EV01–EV06**:
-
-```bash
-# Run the full suite (deterministic + judge)
-cd backend
-uv run python -m app.eval.run --cases backend/eval/golden_set.jsonl --judge
+For GCP Vertex AI instead of API key:
+```env
+GCP_CREDENTIALS_PATH=/path/to/service-account.json
+GCP_PROJECT=your-gcp-project
+GCP_LOCATION=us-central1
 ```
-
-**Outputs:**
-- `backend/eval/scorecard.csv` - Per-case metrics (latency, tokens, cost, pass/fail)
-- `backend/eval/runs.md` - Run-level aggregates for drift detection
-- `backend/eval/last_run.json` - Full snapshot for manual audit
-
-**Scorecard columns:** `run_id`, `case_id`, `category`, `language`, `passed`, `deterministic_score`, `judge_avg`, `latency_ms`, `tool_calls`, `input_tokens`, `output_tokens`, `est_cost_usd`, `failure`, `comments`
-
-**Golden set distribution:**
-- 10 valid charts (6 languages)
-- 8 Vedic queries (dasha, sade sati, panchang, milan, muhurta, transits, sky, knowledge)
-- 5 multilingual cases
-- 4 graceful-failure cases (missing time, ambiguous place, unknown person, invalid date)
-- 3 adversarial cases (fatalistic question, prompt injection, sensitive trigger)
-
-See [`backend/EVALUATION.md`](./backend/EVALUATION.md) for complete documentation.
-
-## 🎯 Design Principles
-
-### For the Seeker
-- **No fatalism** - placements are tendencies, not destiny
-- **Cultural authenticity** - Sanskrit terms used naturally, Indian framing
-- **Warmth over accuracy** - a caring astrologer first, calculator second
-- **Privacy by design** - user data never leaves your Supabase instance
-
-### For the Developer
-- **Resolver-aware tool registry** - single source of truth in `_resolvers.py`
-- **Request-scoped ContextVars** - clean separation of HTTP context from tool logic
-- **Voice model constraints** - tools accept minimal args (no lat/lng reading aloud)
-- **Defensive caps** - 4000-character reply limit, graceful error handling
-
-### For the Evaluator
-- **Honest scores over perfect scores** - reproducible metrics, not cherry-picked demos
-- **Cost/latency as first-class metrics** - correct but slow is a regression
-- **Failure modes tested on purpose** - graceful failure is a feature
-- **Judge validation required** - spot-check 10 verdicts, report ±1 agreement rate
-
-## 📞 Contact & Links
-
-- **Portfolio**: [devbhangale.vercel.app](https://devbhangale.vercel.app)
-- **Live Demo**: [astrophageai.vercel.app](https://astrophageai.vercel.app)
-- **YouTube Demo**: [Watch the walkthrough](https://youtube.com/watch?v=YOUR_VIDEO_ID)
-- **GitHub**: [github.com/devbh04/astrophage](https://github.com/devbh04/astrophage)
-
 
 ---
 
-<div align="center">
+## 🧪 Evaluation System
 
-*Built with care for seekers everywhere* ✨
+The eval harness is designed around the principle that **"it worked when I tried it" is not evidence**. It implements EV01–EV06 from the evaluation rubric.
 
-</div>
+### Run it
+
+```bash
+cd backend
+
+# Deterministic assertions only (fast, no LLM cost)
+uv run python -m app.eval.run --cases backend/eval/golden_set.jsonl
+
+# Full suite with LLM judge
+uv run python -m app.eval.run --cases backend/eval/golden_set.jsonl --judge
+```
+
+### What it measures
+
+| Metric | How |
+|--------|-----|
+| **Tool correctness** | Did the expected tools fire? |
+| **Chart math** | 9 grahas present, ascendant matches reference |
+| **Guardrails** | No fatalistic/leaked-prompt tokens in response |
+| **Language match** | Response language matches expected |
+| **Step budget** | Node visits within the case's budget |
+| **Latency** | Wall-clock ms per case (p50, p95 aggregated) |
+| **Token usage** | Input + output tokens from `usage_metadata` |
+| **Cost** | Estimated USD per case |
+| **Failure rate** | Exceptions during agent execution |
+| **Tone (judge)** | Warmth, cultural appropriateness, helpfulness, fluency (1–5 each) |
+
+### Outputs
+
+- `eval/scorecard.csv` — one row per case, appended each run
+- `eval/runs.md` — one row per run (aggregates for drift detection)
+- `eval/last_run.json` — full snapshot for manual judge audit
+
+### Judge validation
+
+```bash
+# Spot-check 10 random judge verdicts against your own scoring
+uv run python -m app.eval.judge_audit --records backend/eval/last_run.json
+```
+
+Reports exact agreement and ±1 agreement rates. Trust the judge only when ±1 agreement is ≥ 80%.
+
+### Golden set coverage (30 cases)
+
+- 10 valid charts (6 languages)
+- 8 Vedic queries (dasha, sade sati, panchang, milan, muhurta, transits, sky, knowledge)
+- 5 multilingual cases
+- 4 graceful-failure cases
+- 3 adversarial cases
+
+Full documentation: [`backend/EVALUATION.md`](./backend/EVALUATION.md)
+
+---
+
+## 📁 Project Structure
+
+```
+astrophage/
+├── backend/
+│   ├── app/
+│   │   ├── agent/                 # LangGraph state machine
+│   │   │   ├── graph.py           # reasoning ⟷ tool_executor → response
+│   │   │   ├── state.py           # AgentState TypedDict
+│   │   │   ├── _user_context.py   # Request-scoped ContextVars
+│   │   │   ├── _llm_factory.py    # Vertex AI / API key auto-detection
+│   │   │   ├── _event_bus.py      # In-memory pub/sub for tool events
+│   │   │   └── nodes/
+│   │   │       ├── reasoning.py   # Main LLM node (tools bound)
+│   │   │       ├── tool_executor.py
+│   │   │       └── response.py
+│   │   ├── tools/                 # 12 Vedic tools
+│   │   │   ├── __init__.py        # TOOL_REGISTRY
+│   │   │   ├── _resolvers.py      # Single source of truth for defaults
+│   │   │   ├── _langchain_tools.py # @tool wrappers for LangChain
+│   │   │   ├── birth_chart.py     # Swiss Ephemeris computation
+│   │   │   ├── chart_svg.py       # Pure-Python SVG renderer
+│   │   │   ├── dasha.py           # Vimshottari algorithm
+│   │   │   └── ...                # panchang, muhurta, nakshatra, etc.
+│   │   ├── api/
+│   │   │   ├── chat.py            # POST /api/chat (HTTP agent turn)
+│   │   │   ├── voice.py           # WS /ws/voice (Gemini Live bridge)
+│   │   │   ├── conversations.py   # CRUD for chat history
+│   │   │   └── profiles.py        # Family vault API
+│   │   ├── auth/                  # JWT + bcrypt + cookie auth
+│   │   ├── db/                    # Supabase client + queries
+│   │   ├── eval/                  # Evaluation harness
+│   │   │   ├── run.py             # One-command runner
+│   │   │   ├── assertions.py      # Deterministic checks
+│   │   │   ├── judge.py           # LLM-as-judge (rubric-based)
+│   │   │   ├── scorecard.py       # CSV + markdown + cost estimation
+│   │   │   └── judge_audit.py     # Manual judge validation
+│   │   └── main.py               # FastAPI app entry point
+│   ├── eval/golden_set.jsonl      # 30 versioned test cases
+│   ├── knowledge_base/            # Curated Vedic markdown (chunked → Qdrant)
+│   ├── scripts/ingest_knowledge.py
+│   ├── EVALUATION.md
+│   └── pyproject.toml
+├── client/
+│   ├── app/(app)/
+│   │   ├── chat/page.tsx          # Main chat interface
+│   │   ├── family/                # Family vault pages
+│   │   ├── calendar/page.tsx      # Panchang calendar
+│   │   ├── settings/page.tsx      # Self birth + residence
+│   │   └── layout.tsx             # App shell + topbar + drawer
+│   ├── components/
+│   │   ├── cards/                 # 12 structured card components
+│   │   ├── voice/VoiceModal.tsx   # Voice orb + card stack
+│   │   └── chat/                  # MarkdownProse + tool indicators
+│   ├── lib/
+│   │   ├── store.ts              # Zustand (user, profiles, language)
+│   │   └── api.ts                # HTTP + WS client helpers
+│   └── package.json
+├── astrophage-be/                 # Deploy mirror (HuggingFace Spaces)
+└── README.md                      # You are here
+```
+
+---
+
+## 🎯 Design Principles
+
+**For the seeker:**
+- No fatalism — placements are tendencies, not destiny
+- Cultural authenticity — Sanskrit terms used naturally, Indian framing
+- Warmth over raw data — interpret, don't regurgitate
+- Privacy by design — data stays in your Supabase instance
+
+**For the developer:**
+- Resolver-aware tool registry — one source of truth, no mismatch between what the LLM sees and what runs
+- Request-scoped ContextVars — clean separation of HTTP context from tool logic
+- Voice model constraints — tools accept minimal args so the model never reads lat/lng aloud
+- Defensive caps — 4000-char reply limit, graceful error dicts, frontend guards
+
+**For the evaluator:**
+- Honest scores over perfect scores — reproducible metrics, not cherry-picked demos
+- Cost and latency are first-class — correct but slow is a regression
+- Failure modes tested on purpose — graceful failure is a feature
+- Judge validation required — unvalidated judge is not evidence
+
+---
+
+## 🔗 Links
+
+| | |
+|---|---|
+| **Live Demo** | [astrophageai.vercel.app](https://astrophageai.vercel.app) |
+| **YouTube Demo** | [Watch the walkthrough](https://youtube.com/watch?v=YOUR_VIDEO_ID) |
+| **GitHub** | [github.com/devbh04/astrophage](https://github.com/devbh04/astrophage) |
+
+---
+
+<p align="center">
+  <em>Built for seekers, by a seeker.</em>
+</p>
