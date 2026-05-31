@@ -179,6 +179,28 @@ def _initial_state(
     }
 
 
+def _truncate_reply(text: str, max_chars: int = 4000) -> str:
+    """
+    Defensively cap an overly long assistant reply.
+
+    Even with a strict prompt the model occasionally regurgitates an
+    entire tool-output payload (we've seen 600k-character replies from
+    raw Muhurta/Panchang dumps). Cap them here so the database, the
+    network, and the chat UI never have to swallow them. The visible
+    cap is about a page of text, plus a short note pointing the seeker
+    at the visual card.
+    """
+    if not isinstance(text, str):
+        return text
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars].rstrip()
+    return (
+        truncated
+        + "\n\n_…the full details are in the card above._"
+    )
+
+
 async def _run_turn(
     *,
     user_id: str,
@@ -295,7 +317,7 @@ async def _run_turn(
     )
 
     return {
-        "final_text": final_text,
+        "final_text": _truncate_reply(final_text),
         "cards": cards,
         "chart_svg": chart_svg,
         "tool_runs": tool_runs,

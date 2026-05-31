@@ -19,9 +19,9 @@ from app.tools import _resolvers as R
 
 
 @tool
-def geocode_place(place_name: str) -> dict:
+async def geocode_place(place_name: str) -> dict:
     """Convert a place name to lat/lng/timezone. Always run this first when the user gives a city, before any other tool that needs coordinates."""
-    return R.geocode_place_resolved(place_name)
+    return await R.geocode_place_resolved(place_name)
 
 
 @tool
@@ -81,9 +81,9 @@ def get_panchang(
 
 
 @tool
-def knowledge_lookup(query: str, top_k: int = 5) -> list:
+async def knowledge_lookup(query: str, top_k: int = 5) -> list:
     """Search the curated Vedic knowledge base. Use for conceptual questions ('what does Saturn signify?')."""
-    return R.knowledge_lookup_resolved(query, top_k=top_k)
+    return await R.knowledge_lookup_resolved(query, top_k=top_k)
 
 
 @tool

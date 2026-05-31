@@ -130,12 +130,10 @@ def _today_iso() -> str:
 # @tool wrappers call them.
 
 
-def geocode_place_resolved(place_name: str) -> dict:
-    return (
-        asyncio.run(_geocode_place(place_name))
-        if asyncio.iscoroutinefunction(_geocode_place)
-        else _geocode_place(place_name)
-    )
+async def geocode_place_resolved(place_name: str) -> dict:
+    if asyncio.iscoroutinefunction(_geocode_place):
+        return await _geocode_place(place_name)
+    return _geocode_place(place_name)
 
 
 def compute_birth_chart_resolved(
@@ -186,8 +184,8 @@ def get_panchang_resolved(
     return _get_panchang(date or _today_iso(), rlat, rlng, rtz)
 
 
-def knowledge_lookup_resolved(query: str, top_k: int = 5) -> list:
-    return asyncio.run(_knowledge_lookup(query, top_k=top_k))
+async def knowledge_lookup_resolved(query: str, top_k: int = 5) -> list:
+    return await _knowledge_lookup(query, top_k=top_k)
 
 
 def kundali_milan_resolved(

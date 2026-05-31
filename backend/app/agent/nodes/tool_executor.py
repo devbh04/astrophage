@@ -24,6 +24,7 @@ except Exception:  # pragma: no cover
         adispatch_custom_event = None  # type: ignore
 
 from app.agent.state import AgentState
+from app.agent._user_context import get_current_natal_chart
 from app.tools import TOOL_REGISTRY
 
 
@@ -51,6 +52,14 @@ async def _emit_card(tool_name: str, result):
         if tool_name == "render_chart_svg":
             if isinstance(result, str) and result.strip():
                 await adispatch_custom_event("chart_svg", result)
+            # Also emit a birth_chart structured card so the user always
+            # sees the planet table next to the visual chart in text mode.
+            chart = get_current_natal_chart()
+            if isinstance(chart, dict) and chart.get("planets"):
+                await adispatch_custom_event(
+                    "structured_card",
+                    {"card_type": "birth_chart", "data": chart},
+                )
             return
         card_type = CARD_TYPES.get(tool_name)
         if not card_type:
