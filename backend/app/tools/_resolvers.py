@@ -21,6 +21,8 @@ from app.agent._user_context import (
     get_current_natal_chart,
     get_current_residence,
     get_current_self_birth,
+    get_last_computed_chart,
+    set_last_computed_chart,
 )
 from app.tools.birth_chart import compute_birth_chart as _compute_birth_chart
 from app.tools.geocode import geocode_place as _geocode_place
@@ -143,7 +145,17 @@ def compute_birth_chart_resolved(
     lng: float,
     timezone: str,
 ) -> dict:
-    return _compute_birth_chart(birth_date, birth_time, lat, lng, timezone)
+    chart = _compute_birth_chart(birth_date, birth_time, lat, lng, timezone)
+    # Cache the freshly-computed chart on the request scope so a later
+    # tool in the same turn (most importantly ``kundali_milan``) can pick
+    # it up by name when the family-vault lookup fails. This is what
+    # makes "compute Riya's chart, then check compatibility with Riya"
+    # work when Riya isn't in the vault yet.
+    try:
+        set_last_computed_chart(chart)
+    except Exception:
+        pass
+    return chart
 
 
 def compute_dasha_periods_resolved(
@@ -222,6 +234,15 @@ async def kundali_milan_resolved(
                     chart = lookup["profile"].get("natal_chart")
                     if isinstance(chart, dict) and chart.get("planets"):
                         return chart
+            # Final fallback: if a chart was just computed in this turn
+            # (e.g. the user dictated the partner's birth details
+            # inline and the model called ``compute_birth_chart``
+            # before reaching here), use it. This unblocks the
+            # "compute then match" flow for partners not yet in the
+            # family vault.
+            recent = get_last_computed_chart()
+            if isinstance(recent, dict) and recent.get("planets"):
+                return recent
         return {}
 
     boy = await _resolve_slot(boy_chart)

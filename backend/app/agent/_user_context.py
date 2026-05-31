@@ -36,6 +36,14 @@ _current_residence: ContextVar[dict | None] = ContextVar(
 _current_self_birth: ContextVar[dict | None] = ContextVar(
     "astrophage_self_birth", default=None
 )
+# Per-request scratch slot for the most recent ad-hoc chart the model
+# computed in this turn (e.g. a partner whose details the user dictated
+# inline but who isn't in the family vault yet). ``kundali_milan`` falls
+# back to this when its ``girl_chart`` argument doesn't resolve to a
+# saved profile.
+_last_computed_chart: ContextVar[dict | None] = ContextVar(
+    "astrophage_last_computed_chart", default=None
+)
 
 
 def get_current_user_id() -> str | None:
@@ -56,6 +64,23 @@ def get_current_residence() -> dict | None:
 
 def get_current_self_birth() -> dict | None:
     return _current_self_birth.get()
+
+
+def get_last_computed_chart() -> dict | None:
+    return _last_computed_chart.get()
+
+
+def set_last_computed_chart(chart: dict | None) -> None:
+    """
+    Update the per-request scratch chart slot.
+
+    Called from inside the ``compute_birth_chart`` resolver so that any
+    later tool in the same turn (most importantly ``kundali_milan``) can
+    pick the chart up by name-fallback. Safe to call repeatedly; only
+    the most recent successful computation is retained.
+    """
+    if isinstance(chart, dict) and chart.get("planets"):
+        _last_computed_chart.set(chart)
 
 
 @contextmanager
@@ -99,6 +124,8 @@ __all__ = [
     "get_current_chart_format",
     "get_current_residence",
     "get_current_self_birth",
+    "get_last_computed_chart",
     "set_current_user_id",
+    "set_last_computed_chart",
     "set_request_context",
 ]
