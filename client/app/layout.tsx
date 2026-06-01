@@ -38,6 +38,7 @@ export default function RootLayout({
     >
       <head>
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+        <script defer src="https://cloud.umami.is/script.js" data-website-id="297f5e63-37fb-4270-a6c3-2945a3aa57e2"></script>
       </head>
       <body className="min-h-full flex flex-col selection:bg-secondary-container/30 selection:text-on-surface">
         {children}
