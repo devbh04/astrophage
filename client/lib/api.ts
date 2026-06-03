@@ -1,9 +1,30 @@
 /**
  * API client for the Astrophage backend.
- * All requests include credentials (cookies) for auth.
+ * Auth strategy (in priority order):
+ *  1. HttpOnly cookie set by the backend on login — works when same-origin
+ *     or when COOKIE_CROSS_SITE=1 + HTTPS is properly configured.
+ *  2. Authorization: Bearer <token> header — fallback for devices/browsers
+ *     that block third-party cookies. Token is stored in localStorage under
+ *     "astrophage_token" and automatically attached to every request.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:7860";
+
+const TOKEN_KEY = "astrophage_token";
+
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
 
 interface ApiOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
@@ -15,10 +36,17 @@ export async function api<T = unknown>(
 ): Promise<T> {
   const { body, headers, ...rest } = options;
 
+  // Attach Bearer token as fallback if we have one stored.
+  const storedToken = getStoredToken();
+  const authHeader: Record<string, string> = storedToken
+    ? { Authorization: `Bearer ${storedToken}` }
+    : {};
+
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...headers,
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -71,11 +99,29 @@ export interface UpdatePreferences {
 }
 
 export const authApi = {
-  register: (data: RegisterData) =>
-    api<User>("/auth/register", { method: "POST", body: data }),
-  login: (data: LoginData) =>
-    api<User>("/auth/login", { method: "POST", body: data }),
-  logout: () => api("/auth/logout", { method: "POST" }),
+  register: async (data: RegisterData): Promise<User> => {
+    const res = await api<User & { token?: string }>("/auth/register", {
+      method: "POST",
+      body: data,
+    });
+    // Store token for the Bearer fallback on devices that block cookies.
+    if (res.token) setStoredToken(res.token);
+    const { token: _, ...user } = res as User & { token?: string };
+    return user;
+  },
+  login: async (data: LoginData): Promise<User> => {
+    const res = await api<User & { token?: string }>("/auth/login", {
+      method: "POST",
+      body: data,
+    });
+    if (res.token) setStoredToken(res.token);
+    const { token: _, ...user } = res as User & { token?: string };
+    return user;
+  },
+  logout: async (): Promise<void> => {
+    setStoredToken(null);
+    await api("/auth/logout", { method: "POST" });
+  },
   me: () => api<User>("/auth/me"),
   updatePreferences: (data: UpdatePreferences) =>
     api<User>("/auth/me", { method: "PATCH", body: data }),

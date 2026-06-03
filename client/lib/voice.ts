@@ -26,7 +26,13 @@ function readSessionCookie(): string | null {
       return decodeURIComponent(t.slice("astrophage_session=".length));
     }
   }
-  return null;
+  // Cookie is HttpOnly and can't be read from JS in production — fall back
+  // to the localStorage token stored at login.
+  try {
+    return localStorage.getItem("astrophage_token");
+  } catch {
+    return null;
+  }
 }
 
 export interface VoiceSocketHandlers {

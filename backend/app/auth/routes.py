@@ -103,7 +103,11 @@ async def register(body: RegisterRequest, response: Response):
     )
     token = create_jwt(user["id"], user["email"])
     _set_auth_cookie(response, token)
-    return _user_response(user)
+    # Return token in the body too so clients that can't use cookies
+    # (cross-origin native apps, devices that block 3rd-party cookies)
+    # can store it in localStorage and send it as a Bearer token.
+    user_data = _user_response(user)
+    return {**user_data.model_dump(), "token": token}
 
 
 @router.post("/login")
@@ -116,7 +120,9 @@ async def login(body: LoginRequest, response: Response):
         )
     token = create_jwt(user["id"], user["email"])
     _set_auth_cookie(response, token)
-    return _user_response(user)
+    # Return token in the body too — same reason as register above.
+    user_data = _user_response(user)
+    return {**user_data.model_dump(), "token": token}
 
 
 @router.post("/logout")
