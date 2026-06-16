@@ -186,8 +186,9 @@ async def run_eval(
         # reason if the run blew up. Both are run through redaction in
         # ``append_row``.
         comments_parts = []
-        if record.get("judge", {}).get("comments"):
-            comments_parts.append(record["judge"]["comments"])
+        judge_data = record.get("judge") or {}
+        if judge_data.get("comments"):
+            comments_parts.append(judge_data["comments"])
         if record.get("failure_reason"):
             comments_parts.append(f"failure:{record['failure_reason']}")
         row = {
