@@ -55,6 +55,15 @@ export default function Navbar() {
         >
           Chat
         </Link>
+        <a
+          href="https://youtu.be/6qW0K6iMzTg"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-nav-label text-nav-label uppercase tracking-[0.15em] text-solar-gold hover:text-primary transition-colors hover:bg-solar-gold/10 transition-all duration-300 py-2 px-3 rounded flex items-center gap-1.5"
+        >
+          <span className="material-symbols-outlined text-[16px] text-solar-gold">play_circle</span>
+          Watch Demo
+        </a>
       </div>
 
       <Link
